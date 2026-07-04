@@ -60,10 +60,11 @@ if [ ! -f "/home/node/.claude.json" ]; then
     fi
 fi
 
-# Map Git requests to use the GITHUB_TOKEN transparently
+# Map Git requests to use the GITHUB_TOKEN transparently, via a credential helper that
+# reads the token from the environment at use time instead of embedding it in gitconfig.
 if [ -n "$GITHUB_TOKEN" ]; then
-    git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-    git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
+    git config --global credential."https://github.com".helper '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f'
+    git config --global url."https://github.com/".insteadOf "git@github.com:"
 fi
 
 # Clone repository if the workspace directory is empty (no .git folder)

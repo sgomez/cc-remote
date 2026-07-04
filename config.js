@@ -80,6 +80,9 @@ async function main() {
   if (!gitName) gitName = 'Claude Remote Agent';
   if (!gitEmail) gitEmail = 'agent@example.com';
 
+  // Reuse a previously generated JWT secret if we have one, otherwise generate a new one.
+  const jwtSecret = config.web?.jwtSecret || crypto.randomBytes(32).toString('hex');
+
   console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
   
   // Prompt for Caddy Enablement
@@ -193,6 +196,7 @@ async function main() {
       clientSecret: clientSecret,
       allowedUsers: allowedUsers,
       port: webPort,
+      jwtSecret: jwtSecret,
       caddy: {
         enabled: enableCaddy,
         httpPort: httpPort,
@@ -211,6 +215,9 @@ async function main() {
 
   // Calculate port bind string
   const caddyHttpPortBind = (enableCaddy && httpPort > 0) ? `${httpPort}:80` : '127.0.0.1:40080:80';
+
+  // BASE_URL is only meaningful when Caddy fronts the app with a real domain.
+  const baseUrl = enableCaddy && domain ? `https://${domain}` : '';
 
   // Build .env file contents
   const envContent = [
@@ -233,7 +240,9 @@ async function main() {
     `CADDY_HTTPS_PORT="${httpsPort}"`,
     `COMPOSE_PROFILES="${enableCaddy ? 'caddy' : ''}"`,
     `PUID="${hostUid}"`,
-    `PGID="${hostGid}"`
+    `PGID="${hostGid}"`,
+    `JWT_SECRET="${jwtSecret}"`,
+    `BASE_URL="${baseUrl}"`
   ].join('\n') + '\n';
 
   fs.writeFileSync('.env', envContent, 'utf8');

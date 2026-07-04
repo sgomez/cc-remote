@@ -21,20 +21,46 @@ services:
       - TMPDIR=/tmp-skills
     volumes:
       - ${PROJECT_PATH}:/workspace
+      # NOTE: CLAUDE_CONFIG_PATH and CLAUDE_JSON_PATH are shared read-write between the
+      # host and all agent sessions, so a compromised session can alter the host's Claude
+      # config. This is an accepted tradeoff for sharing auth across sessions.
       - ${CLAUDE_CONFIG_PATH}:/home/node/.claude
       - ${CLAUDE_JSON_PATH}:/home/node/.claude.json
       - ./tmp-skills:/tmp-skills
+
+  docker-socket-proxy:
+    # TODO: pin to a specific digest for reproducibility once vetted (tag pinned to v0.4.2 for now)
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - VOLUMES=1
+      - POST=1
+      - IMAGES=0
+      - NETWORKS=0
+      - EXEC=0
+      - BUILD=0
+      - INFO=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No ports are published to the host; only reachable from other services on the
+    # compose network (e.g. web-manager via DOCKER_HOST=tcp://docker-socket-proxy:2375).
 
   web-manager:
     build: ./web
     restart: unless-stopped
     ports:
       - "127.0.0.1:${WEB_PORT:-4000}:4000"
+    depends_on:
+      - docker-socket-proxy
     environment:
       - WEB_PORT=4000
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       - ALLOWED_GITHUB_USERS=${ALLOWED_GITHUB_USERS}
+      # NOTE: CLAUDE_CONFIG_PATH and CLAUDE_JSON_PATH are shared read-write between the
+      # host and all agent sessions, so a compromised session can alter the host's Claude
+      # config. This is an accepted tradeoff for sharing auth across sessions.
       - CLAUDE_CONFIG_PATH=${CLAUDE_CONFIG_PATH}
       - CLAUDE_JSON_PATH=${CLAUDE_JSON_PATH}
       - GIT_USER_NAME=${GIT_USER_NAME}
@@ -43,11 +69,13 @@ services:
       - PGID=${PGID:-1000}
       - PERMISSION_MODE=${PERMISSION_MODE:-auto}
       - AGENT_IMAGE=cc-remote-claude-agent
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+      - JWT_SECRET=${JWT_SECRET:-}
+      - BASE_URL=${BASE_URL:-}
+      - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
 
   caddy:
-    image: caddy:latest
+    image: caddy:2
     restart: unless-stopped
     profiles:
       - caddy
@@ -57,7 +85,7 @@ services:
     environment:
       - DOMAIN_NAME=${DOMAIN_NAME}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

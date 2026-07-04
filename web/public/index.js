@@ -1,4 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // --- Helper: Escape HTML special characters to prevent XSS ---
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // Screens
   const loginScreen = document.getElementById('login-screen');
   const dashboardScreen = document.getElementById('dashboard-screen');
@@ -160,29 +170,33 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const card = document.createElement('div');
         card.className = 'glass-card session-card';
+        const safeName = escapeHtml(session.name);
+        const safeRepo = escapeHtml(session.repo);
+        const safeStatus = escapeHtml(session.status);
+        const safeRepoHref = encodeURI(session.repo);
         card.innerHTML = `
           <div class="session-header">
             <div class="session-meta">
-              <h4>${session.name}</h4>
-              <a href="https://github.com/${session.repo}" target="_blank" class="repo-link">
+              <h4>${safeName}</h4>
+              <a href="https://github.com/${safeRepoHref}" target="_blank" class="repo-link">
                 <i data-lucide="github" style="width: 14px; height: 14px;"></i>
-                <span>${session.repo}</span>
+                <span>${safeRepo}</span>
               </a>
             </div>
             <div class="status-badge ${statusClass}">
               <span class="status-dot"></span>
-              <span>${session.status}</span>
+              <span>${safeStatus}</span>
             </div>
           </div>
           <div class="session-footer">
             <span class="text-muted" style="font-size: 0.8rem;">Created: ${new Date(session.created * 1000).toLocaleDateString()}</span>
             <div class="session-actions">
-              ${isRunning ? 
-                `<button class="btn btn-secondary btn-sm btn-stop" data-name="${session.name}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>` :
-                `<button class="btn btn-primary btn-sm btn-start" data-name="${session.name}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`
+              ${isRunning ?
+                `<button class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>` :
+                `<button class="btn btn-primary btn-sm btn-start" data-name="${safeName}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`
               }
-              <button class="btn btn-secondary btn-sm btn-logs" data-name="${session.name}"><i data-lucide="scroll" style="width: 14px; height: 14px;"></i> Logs</button>
-              <button class="btn btn-danger btn-sm btn-delete" data-name="${session.name}" ${isRunning ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Stop the container before deleting."' : ''}><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete</button>
+              <button class="btn btn-secondary btn-sm btn-logs" data-name="${safeName}"><i data-lucide="scroll" style="width: 14px; height: 14px;"></i> Logs</button>
+              <button class="btn btn-danger btn-sm btn-delete" data-name="${safeName}" ${isRunning ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Stop the container before deleting."' : ''}><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete</button>
             </div>
           </div>
         `;
@@ -304,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
       item.className = 'combobox-item';
       item.dataset.value = repo.full_name;
       item.innerHTML = `
-        <span>${repo.full_name}</span>
+        <span>${escapeHtml(repo.full_name)}</span>
         ${repo.private ? '<span class="item-private">Private</span>' : ''}
       `;
 
