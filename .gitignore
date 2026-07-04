@@ -15,3 +15,7 @@ tmp-skills/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Agent Wayfinder tracking
+.wayfinder/
+

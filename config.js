@@ -196,6 +196,32 @@ async function main() {
   const permissionModeInput = await question(`Enter permission mode (auto, default, acceptEdits, plan, dontAsk, bypassPermissions) [${defaultPermissionMode}]: `);
   const permissionMode = permissionModeInput === '' ? defaultPermissionMode : permissionModeInput;
 
+  console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
+  const defaultWebPort = config.web?.port || '4000';
+  const webPortInput = await question(`Enter port for Web Manager [${defaultWebPort}]: `);
+  const webPort = webPortInput === '' ? defaultWebPort : webPortInput;
+
+  const defaultWebPassword = config.web?.password || crypto.randomBytes(8).toString('hex');
+  const webPasswordInput = await question(`Enter admin password for Web Manager portal [${config.web?.password ? 'HIDDEN' : `Generated: ${defaultWebPassword}`}]: `);
+  const webPassword = webPasswordInput === '' ? defaultWebPassword : webPasswordInput;
+
+  let defaultOtpSecret = config.web?.otpSecret;
+  if (!defaultOtpSecret) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    defaultOtpSecret = '';
+    const bytes = crypto.randomBytes(16);
+    for (let i = 0; i < 16; i++) {
+      defaultOtpSecret += alphabet[bytes[i] % 32];
+    }
+  }
+  const otpSecretInput = await question(`Enter OTP Generation Secret (Base32) [${config.web?.otpSecret ? 'HIDDEN' : `Generated: ${defaultOtpSecret}`}]: `);
+  const otpSecret = otpSecretInput === '' ? defaultOtpSecret : otpSecretInput;
+
+  console.log('\n\x1b[36m[Tip] Add this OTP secret to your Authenticator app (e.g. Google Authenticator) using the Key option:');
+  console.log(`      Key Name: cc-remote`);
+  console.log(`      Secret Key: \x1b[32m${otpSecret}\x1b[0m`);
+  console.log(`      Type: Time-based (TOTP)\n\x1b[0m`);
+
   console.log('\n\x1b[35m--- Headroom context compression (Experimental) ---\x1b[0m');
   console.log('\x1b[33m[Warning] Use Headroom with caution and under supervision.');
   console.log('          An increase in cache write activity has been observed when activated.');
@@ -251,6 +277,11 @@ async function main() {
     permissions: {
       mode: permissionMode
     },
+    web: {
+      port: webPort,
+      password: webPassword,
+      otpSecret: otpSecret
+    },
     headroom: {
       enabled: useHeadroom,
       configPath: useHeadroom ? headroomConfig : undefined,
@@ -280,6 +311,9 @@ async function main() {
     `SESSION_NAME="${sessionName}"`,
     `SESSION_UUID="${sessionUuid}"`,
     `PERMISSION_MODE="${permissionMode}"`,
+    `WEB_PORT="${webPort}"`,
+    `WEB_PASSWORD="${webPassword}"`,
+    `OTP_SECRET="${otpSecret}"`,
     `HEADROOM_CONFIG_PATH="${useHeadroom ? headroomConfig : resolvePath('~/.headroom')}"`,
     `HEADROOM_PROJECT_NAME="${useHeadroom ? headroomProject : ''}"`,
     `HEADROOM_HOST_PORT="${headroomPort}"`,

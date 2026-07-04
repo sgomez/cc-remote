@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code - Remote Web Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <!-- Background Glow Effects -->
+  <div class="glow-bg">
+    <div class="glow-sphere glow-1"></div>
+    <div class="glow-sphere glow-2"></div>
+  </div>
+
+  <div class="app-container">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="glass-card auth-card">
+      <div class="auth-header">
+        <div class="logo-icon">
+          <i data-lucide="terminal"></i>
+        </div>
+        <h1>cc-remote</h1>
+        <p class="subtitle">Secure Session Portal</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="password">Password</label>
+          <div class="input-wrapper">
+            <i data-lucide="key-round" class="input-icon"></i>
+            <input type="password" id="password" placeholder="••••••••" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="otp">One-Time Password (OTP)</label>
+          <div class="input-wrapper">
+            <i data-lucide="shield-check" class="input-icon"></i>
+            <input type="text" id="otp" placeholder="123456" inputmode="numeric" pattern="[0-9]*" maxlength="6" required>
+          </div>
+        </div>
+        <div id="login-error" class="error-banner hidden">
+          <i data-lucide="alert-circle"></i>
+          <span class="error-msg"></span>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">
+          <span>Sign In</span>
+          <i data-lucide="arrow-right"></i>
+        </button>
+      </form>
+    </div>
+
+    <!-- MAIN DASHBOARD -->
+    <div id="dashboard-screen" class="hidden">
+      <!-- HEADER -->
+      <header class="dashboard-header glass-card">
+        <div class="header-brand">
+          <div class="logo-icon small">
+            <i data-lucide="terminal"></i>
+          </div>
+          <div>
+            <h2>cc-remote</h2>
+            <p class="text-muted">Docker Session Manager</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="btn-show-settings" class="btn btn-secondary btn-icon" title="GitHub Settings">
+            <i data-lucide="github"></i>
+          </button>
+          <button id="btn-new-session" class="btn btn-primary">
+            <i data-lucide="plus"></i>
+            <span>New Session</span>
+          </button>
+          <button id="btn-logout" class="btn btn-danger btn-icon" title="Sign Out">
+            <i data-lucide="log-out"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- SETTINGS ROW (COLLAPSIBLE GITHUB TOKEN OVERRIDE) -->
+      <section id="settings-panel" class="settings-panel glass-card hidden">
+        <div class="panel-header">
+          <h3><i data-lucide="settings"></i> GitHub Token Configuration</h3>
+          <button id="btn-close-settings" class="btn-close">&times;</button>
+        </div>
+        <p class="panel-desc">By default, the server uses its configured GITHUB_TOKEN environment variable. Paste a custom token below to query your personal GitHub repositories or override clones client-side (saved in your browser only).</p>
+        <div class="form-group">
+          <label for="github-token-override">Custom Fine-Grained PAT Override</label>
+          <div class="input-wrapper">
+            <i data-lucide="lock" class="input-icon"></i>
+            <input type="password" id="github-token-override" placeholder="ghp_xxxxxxxxxxxx (Optional)">
+          </div>
+        </div>
+        <div class="panel-actions">
+          <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
+          <button id="btn-clear-settings" class="btn btn-secondary">Clear Custom Token</button>
+        </div>
+      </section>
+
+      <!-- SESSIONS SECTION -->
+      <main class="dashboard-content">
+        <div class="content-header">
+          <h3><i data-lucide="layers"></i> Active Containers</h3>
+          <button id="btn-refresh-sessions" class="btn btn-secondary btn-sm btn-icon" title="Refresh list">
+            <i data-lucide="rotate-cw"></i>
+          </button>
+        </div>
+
+        <!-- SESSIONS GRID -->
+        <div id="sessions-grid" class="sessions-grid">
+          <!-- Dynamically filled -->
+        </div>
+
+        <!-- EMPTY STATE -->
+        <div id="empty-state" class="empty-state glass-card hidden">
+          <div class="empty-icon">
+            <i data-lucide="box"></i>
+          </div>
+          <h4>No Container Sessions Found</h4>
+          <p>Create a new container session to host your Claude Code agent workspace.</p>
+          <button id="btn-empty-new-session" class="btn btn-primary">Create First Session</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- MODAL: CREATE SESSION -->
+  <div id="create-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <h3><i data-lucide="box"></i> Create Claude Session</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="create-session-form">
+        <div class="form-group">
+          <label for="session-name-input">Session Name</label>
+          <div class="input-wrapper">
+            <i data-lucide="tag" class="input-icon"></i>
+            <input type="text" id="session-name-input" placeholder="e.g. project-x" required pattern="[a-zA-Z0-9_-]+" title="Alphanumeric, hyphens, and underscores only.">
+          </div>
+          <p class="input-help">This determines the container name and the Claude Remote session ID.</p>
+        </div>
+        
+        <div class="form-group">
+          <label for="repo-select">Select GitHub Repository</label>
+          <div class="repo-selection-container">
+            <select id="repo-select" class="form-control" required>
+              <option value="" disabled selected>Loading repositories...</option>
+            </select>
+            <button type="button" id="btn-reload-repos" class="btn btn-secondary btn-icon" title="Reload Repository List">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+          <div class="manual-repo-toggle">
+            <a href="#" id="toggle-manual-repo">Or enter repository path manually</a>
+          </div>
+        </div>
+
+        <div id="manual-repo-group" class="form-group hidden">
+          <label for="repo-manual-input">GitHub Repo (format: owner/name)</label>
+          <div class="input-wrapper">
+            <i data-lucide="folder-git" class="input-icon"></i>
+            <input type="text" id="repo-manual-input" placeholder="e.g. anthropic/claude-code">
+          </div>
+        </div>
+
+        <div id="create-error" class="error-banner hidden">
+          <i data-lucide="alert-circle"></i>
+          <span class="error-msg"></span>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-create">
+            <span>Launch Container</span>
+            <i data-lucide="loader-2" class="spin hidden"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRM DELETE -->
+  <div id="delete-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <h3><i data-lucide="trash-2" class="text-danger"></i> Delete Session</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to stop and delete the session container <strong id="delete-session-display"></strong>?</p>
+        
+        <div class="checkbox-group glass-card-nested">
+          <label class="checkbox-container">
+            <input type="checkbox" id="delete-volume-checkbox" checked>
+            <span class="checkmark"></span>
+            <div class="checkbox-label">
+              <strong>Delete Workspace Volume</strong>
+              <p class="text-muted">Warning: This will permanently delete the cloned git repository and any uncommitted code files inside the workspace volume.</p>
+            </div>
+          </label>
+        </div>
+
+        <div id="delete-error" class="error-banner hidden">
+          <i data-lucide="alert-circle"></i>
+          <span class="error-msg"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" id="btn-confirm-delete" class="btn btn-danger">
+          <span>Destroy Session</span>
+          <i data-lucide="loader-2" class="spin hidden"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lucide Icon Library -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="index.js"></script>
+</body>
+</html>
