@@ -287,6 +287,8 @@ label {
   background: var(--danger);
   color: #fff;
   box-shadow: 0 4px 15px var(--danger-glow);
+}
+
 .btn-github {
   background: #24292f;
   color: #fff;
