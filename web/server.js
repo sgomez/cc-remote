@@ -394,6 +394,43 @@ app.post('/api/sessions/:name/delete', requireAuth, async (req, res) => {
   }
 });
 
+// Get Logs
+app.get('/api/sessions/:name/logs', requireAuth, async (req, res) => {
+  const containerName = `cc-remote-session-${req.params.name}`;
+  try {
+    const container = docker.getContainer(containerName);
+    const logBuffer = await container.logs({
+      stdout: true,
+      stderr: true,
+      tail: 150,
+      timestamps: false
+    });
+
+    let logsText = '';
+    let offset = 0;
+    while (offset < logBuffer.length) {
+      if (offset + 8 > logBuffer.length) break;
+      const type = logBuffer.readUInt8(offset);
+      const size = logBuffer.readUInt32BE(offset + 4);
+      if (offset + 8 + size > logBuffer.length) {
+        logsText += logBuffer.slice(offset + 8).toString('utf8');
+        break;
+      }
+      const chunk = logBuffer.slice(offset + 8, offset + 8 + size);
+      logsText += chunk.toString('utf8');
+      offset += 8 + size;
+    }
+
+    if (logsText === '') {
+      logsText = logBuffer.toString('utf8');
+    }
+
+    res.json({ logs: logsText });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to retrieve logs: ${err.message}` });
+  }
+});
+
 // Fetch user repositories from GitHub
 app.get('/api/repos', requireAuth, async (req, res) => {
   const accessToken = req.user.accessToken;

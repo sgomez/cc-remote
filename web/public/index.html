@@ -185,6 +185,26 @@
     </div>
   </div>
 
+  <!-- MODAL: VIEW LOGS -->
+  <div id="logs-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card logs-modal-card">
+      <div class="modal-header">
+        <h3><i data-lucide="scroll"></i> Container Logs: <span id="logs-session-display"></span></h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre id="logs-content" class="logs-viewer-pre">Loading logs...</pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-refresh-logs" class="btn btn-secondary">
+          <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+          <span>Refresh</span>
+        </button>
+        <button type="button" class="btn btn-primary" data-close-modal>Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Lucide Icon Library -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="index.js"></script>

@@ -36,8 +36,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const deleteError = document.getElementById('delete-error');
   const btnConfirmDelete = document.getElementById('btn-confirm-delete');
 
+  // Modal: View Logs
+  const logsModal = document.getElementById('logs-modal');
+  const logsSessionDisplay = document.getElementById('logs-session-display');
+  const logsContent = document.getElementById('logs-content');
+  const btnRefreshLogs = document.getElementById('btn-refresh-logs');
+
   // State
   let activeDeleteSessionName = null;
+  let activeLogsSessionName = null;
   let isManualRepoActive = false;
   let repositories = [];
 
@@ -172,7 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 `<button class="btn btn-secondary btn-sm btn-stop" data-name="${session.name}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>` :
                 `<button class="btn btn-primary btn-sm btn-start" data-name="${session.name}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`
               }
-              <button class="btn btn-danger btn-sm btn-delete" data-name="${session.name}"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete</button>
+              <button class="btn btn-secondary btn-sm btn-logs" data-name="${session.name}"><i data-lucide="scroll" style="width: 14px; height: 14px;"></i> Logs</button>
+              <button class="btn btn-danger btn-sm btn-delete" data-name="${session.name}" ${isRunning ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Stop the container before deleting."' : ''}><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete</button>
             </div>
           </div>
         `;
@@ -192,7 +200,14 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => controlSession(btn.dataset.name, 'stop'));
       });
       document.querySelectorAll('.btn-delete').forEach(btn => {
-        btn.addEventListener('click', () => openDeleteModal(btn.dataset.name));
+        btn.addEventListener('click', () => {
+          if (!btn.hasAttribute('disabled')) {
+            openDeleteModal(btn.dataset.name);
+          }
+        });
+      });
+      document.querySelectorAll('.btn-logs').forEach(btn => {
+        btn.addEventListener('click', () => openLogsModal(btn.dataset.name));
       });
 
     } catch (err) {
@@ -221,6 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       createModal.classList.add('hidden');
       deleteModal.classList.add('hidden');
+      logsModal.classList.add('hidden');
+      activeLogsSessionName = null;
     });
   });
 
@@ -385,6 +402,41 @@ document.addEventListener('DOMContentLoaded', () => {
       btnText.classList.remove('hidden');
       btnSpinner.classList.add('hidden');
       btnSubmitCreate.removeAttribute('disabled');
+    }
+  });
+
+  // --- Logs Modal ---
+  async function openLogsModal(name) {
+    activeLogsSessionName = name;
+    logsSessionDisplay.textContent = name;
+    logsContent.textContent = 'Loading container logs...';
+    logsModal.classList.remove('hidden');
+    await fetchLogs(name);
+  }
+
+  async function fetchLogs(name) {
+    try {
+      const res = await fetch(`/api/sessions/${name}/logs`);
+      if (res.status === 401) {
+        showScreen('login');
+        return;
+      }
+      const data = await res.json();
+      if (res.ok) {
+        logsContent.textContent = data.logs || 'No logs available for this container.';
+        logsContent.scrollTop = logsContent.scrollHeight;
+      } else {
+        logsContent.textContent = `Error: ${data.error || 'Failed to retrieve logs.'}`;
+      }
+    } catch (e) {
+      logsContent.textContent = 'Network error while retrieving container logs.';
+    }
+  }
+
+  btnRefreshLogs.addEventListener('click', () => {
+    if (activeLogsSessionName) {
+      logsContent.textContent = 'Refreshing logs...';
+      fetchLogs(activeLogsSessionName);
     }
   });
 
