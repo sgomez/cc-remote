@@ -3,6 +3,7 @@ const path = require('path');
 const readline = require('readline');
 const https = require('https');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 // Helper to prompt user
 const rl = readline.createInterface({
@@ -221,6 +222,15 @@ async function main() {
   console.log(`      Key Name: cc-remote`);
   console.log(`      Secret Key: \x1b[32m${otpSecret}\x1b[0m`);
   console.log(`      Type: Time-based (TOTP)\n\x1b[0m`);
+
+  try {
+    const otpAuthUrl = `otpauth://totp/cc-remote?secret=${otpSecret}&issuer=cc-remote`;
+    console.log('\x1b[36mOr scan this QR code with your Authenticator app:\x1b[0m');
+    const qrCodeOutput = execSync(`npx -y qrcode --small "${otpAuthUrl}"`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    console.log(qrCodeOutput);
+  } catch (err) {
+    // Fall back silently if npx or qrcode fails
+  }
 
   console.log('\n\x1b[35m--- Headroom context compression (Experimental) ---\x1b[0m');
   console.log('\x1b[33m[Warning] Use Headroom with caution and under supervision.');
