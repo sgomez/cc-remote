@@ -1,6 +1,6 @@
-# Claude Code Remote with Headroom Support (VPS Setup)
+# Claude Code Remote Session Manager (VPS Setup)
 
-This project provides a fully configurable Docker setup to run [Claude Code](https://github.com/anthropics/claude-code) with **Remote Control** enabled on a Virtual Private Server (VPS). It includes transparent GitHub authentication, Git identity mapping, automated session backups, and optional context compression via [Headroom](https://github.com/chopratejas/headroom).
+This project provides a fully configurable Docker setup to run [Claude Code](https://github.com/anthropics/claude-code) with **Remote Control** enabled on a Virtual Private Server (VPS). It includes transparent GitHub authentication, Git identity mapping, and automated session backups.
 
 ---
 
@@ -14,7 +14,7 @@ This project provides a fully configurable Docker setup to run [Claude Code](htt
 - **Secure GitHub Auth:** Uses a GitHub Personal Access Token to authenticate all git clone/push/pull commands without exposing SSH keys inside the container.
 - **Dockerized Sandbox:** Runs in an isolated Docker container with essential tools (`git`, `curl`, `gh` CLI).
 - **Auto Mode Integration:** Configured to run in Claude's Auto Mode (`--permission-mode auto`) by default, utilizing an AI safety classifier to auto-approve safe tasks and eliminate prompt fatigue.
-- **Context Compression (Experimental/Optional):** Integrates [Headroom](https://github.com/chopratejas/headroom) to compress tool outputs, command logs, and file structures. This reduces token consumption by **60% to 95%** while retaining answer quality. *Warning: Headroom is experimental, should be used under supervision, and can increase cache write operations.*
+
 - **User Identity Adapter:** Dynamically maps the running container user (UID/GID) to match your host system user. This prevents files created by the agent inside the shared `/workspace` from being owned by `root` on the host.
 - **Session & Connection Persistence:** Configures a persistent session name (defaults to the repository name) and an optional unique static UUID, allowing your Remote Control session connection to persist across container re-creations without re-pairing.
 - **Interactive Config-Backed Setup:** A clean configuration setup (`setup.sh` + `config.js`) verifies host paths, writes to a schema-validated `config.json`, and compiles variables to `.env` automatically.
@@ -103,7 +103,7 @@ During setup, you will be prompted for:
 - Whitelisted GitHub usernames (`ALLOWED_GITHUB_USERS`, comma-separated) allowed to access the system (e.g. `sgomez`).
 - The script automatically outputs a link and a step-by-step console guide to register the GitHub OAuth Application correctly based on the domain you enter.
 - Paths for the project directory, Claude configuration directory (`~/.claude`), and session credentials file (`~/.claude.json`) are resolved automatically.
-- Whether to enable **Headroom** context compression (experimental, disabled by default). If enabled, the project name for Headroom stats will default to your Session Name.
+- Whether to enable the **Caddy** reverse proxy, and specify custom HTTP/HTTPS port mappings (HTTP can be disabled with port `0`).
 
 ### 3. Run the Container
 
@@ -165,64 +165,7 @@ To avoid heavy nesting, performance hits, and security vulnerabilities associate
 
 ---
 
-## How Headroom Integration Works
 
-> [!WARNING]
-> **Experimental Feature:** Headroom integration is experimental and should be used under supervision. An increase in cache write operations has been observed when Headroom is enabled. It is disabled by default in the configuration.
-
-When Headroom context compression is enabled during the interactive `setup.sh` script:
-1. **Multi-Container Layout:** Docker Compose loads the `headroom` profile (`COMPOSE_PROFILES="headroom"`), spinning up the official `ghcr.io/chopratejas/headroom:latest` proxy container alongside the `claude-agent`.
-2. **Transparent Routing:** The `claude-agent` container is configured with the `ANTHROPIC_BASE_URL` environment variable pointing to `http://headroom:8787`. All of Claude Code's Anthropic API requests are automatically routed through the Headroom proxy.
-3. **Context Compression:** Headroom intercepts the traffic, compressing large tool outputs, file AST trees, and logs on-the-fly to reduce token usage by **60% to 95%** before transmitting the data to Anthropic.
-4. **Metrics Persistence:** Headroom persistent savings statistics and learning logs are saved in `/root/.headroom` within the `headroom` container. By mounting the host folder defined in `HEADROOM_CONFIG_PATH`, all metrics are preserved between container restarts.
-
-If Headroom is disabled:
-1. The `headroom` service profile is not loaded, saving host memory and CPU resources.
-2. The `claude-agent` container communicates directly with the official Anthropic API endpoint (`https://api.anthropic.com`) as standard.
-
-### Port Safety & Security
-
-By default, the Headroom container port mapping in `docker-compose.yaml` is bound strictly to **`127.0.0.1`** (localhost on your VPS host):
-```yaml
-ports:
-  - "127.0.0.1:${HEADROOM_HOST_PORT:-8787}:8787"
-```
-This ensures the compression proxy is **not exposed to the public internet** or external networks, maintaining a secure sandbox environment on your VPS.
-
-### Monitoring Metrics & Savings Data
-
-Headroom tracks metrics including token savings, compression ratios, latency overhead, and cost savings in USD. For a detailed guide on the available telemetry and metrics, consult the official [Headroom Metrics Documentation](https://headroom-docs.vercel.app/docs/metrics).
-
-You can monitor and view these metrics in two ways:
-
-#### Option 1: Directly on the VPS Host (CLI)
-You can use `curl` to query the proxy's endpoints directly from your VPS command line:
-
-* **Get instant JSON statistics** (lifetime token savings, USD saved, compression ratios):
-  ```bash
-  curl http://127.0.0.1:8787/stats
-  ```
-* **Get Prometheus-compatible metrics**:
-  ```bash
-  curl http://127.0.0.1:8787/metrics
-  ```
-* **Get durable savings history** (hourly/daily/weekly rollups):
-  ```bash
-  curl http://127.0.0.1:8787/stats-history
-  ```
-
-#### Option 2: From your local Web Browser (Secure SSH Tunnel)
-Since the port is bound to `127.0.0.1` and not exposed to the internet, you can access it securely from your local browser via an SSH port-forwarding tunnel:
-
-1. **Establish the tunnel** from your local machine:
-   ```bash
-   ssh -L 8787:127.0.0.1:8787 user@vps-ip-address
-   ```
-2. **Access the endpoints in your browser**:
-   - Live metrics summary: `http://localhost:8787/stats`
-   - Prometheus metrics raw data: `http://localhost:8787/metrics`
-
----
 
 ## Auto Mode & Container Sandboxing
 

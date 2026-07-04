@@ -47,10 +47,7 @@ if [ $? -eq 0 ] && [ -f .env ]; then
     mkdir -p "$(dirname "$CLAUDE_JSON_PATH")"
     echo "{}" > "$CLAUDE_JSON_PATH"
   fi
-  if [ "$COMPOSE_PROFILES" = "headroom" ] && [ -n "$HEADROOM_CONFIG_PATH" ] && [ ! -d "$HEADROOM_CONFIG_PATH" ]; then
-    echo -e " [Info] Creating Headroom config directory: ${BLUE}$HEADROOM_CONFIG_PATH${NC}"
-    mkdir -p "$HEADROOM_CONFIG_PATH"
-  fi
+
   if [ ! -d "tmp-skills" ]; then
     echo -e " [Info] Creating skills temp directory: ${BLUE}tmp-skills${NC}"
     mkdir -p "tmp-skills"

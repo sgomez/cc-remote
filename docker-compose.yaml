@@ -48,9 +48,11 @@ services:
   caddy:
     image: caddy:latest
     restart: unless-stopped
+    profiles:
+      - caddy
     ports:
-      - "80:80"
-      - "443:443"
+      - "${CADDY_HTTP_PORT_BIND:-80:80}"
+      - "${CADDY_HTTPS_PORT:-443}:443"
     environment:
       - DOMAIN_NAME=${DOMAIN_NAME}
     volumes:
@@ -59,16 +61,6 @@ services:
       - caddy_config:/config
     depends_on:
       - web-manager
-
-  headroom:
-    image: ghcr.io/chopratejas/headroom:latest
-    restart: unless-stopped
-    profiles:
-      - headroom
-    ports:
-      - "127.0.0.1:${HEADROOM_HOST_PORT:-8787}:8787"
-    volumes:
-      - ${HEADROOM_CONFIG_PATH}:/root/.headroom
 
 volumes:
   caddy_data:

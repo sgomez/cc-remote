@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
@@ -82,12 +81,52 @@ async function main() {
   if (!gitEmail) gitEmail = 'agent@example.com';
 
   console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
-  const defaultDomain = config.web?.domain || '';
-  const domainInput = await question(`Enter your VPS Domain Name (e.g., cc.example.com) [${defaultDomain}]: `);
-  const domain = domainInput === '' ? defaultDomain : domainInput;
+  
+  // Prompt for Caddy Enablement
+  const defaultEnableCaddy = config.web?.caddy?.enabled !== undefined ? config.web.caddy.enabled : false;
+  const enableCaddyInput = await question(`Enable Caddy reverse proxy? (y/N) [${defaultEnableCaddy ? 'y' : 'n'}]: `);
+  let enableCaddy = defaultEnableCaddy;
+  if (enableCaddyInput !== '') {
+    enableCaddy = ['y', 'yes'].includes(enableCaddyInput.toLowerCase().trim());
+  }
 
-  const callbackUrl = domain ? `https://${domain}/api/auth/github/callback` : 'http://localhost:4000/api/auth/github/callback';
-  const homepageUrl = domain ? `https://${domain}` : 'http://localhost:4000';
+  let domain = '';
+  let httpPort = 80;
+  let httpsPort = 443;
+
+  if (enableCaddy) {
+    const defaultDomain = config.web?.domain || '';
+    const domainInput = await question(`Enter your VPS Domain Name (e.g., cc.example.com) [${defaultDomain}]: `);
+    domain = domainInput === '' ? defaultDomain : domainInput.trim();
+
+    const defaultHttpPort = config.web?.caddy?.httpPort !== undefined ? config.web.caddy.httpPort : 80;
+    const httpPortInput = await question(`Enter Caddy HTTP Port (0 to disable) [${defaultHttpPort}]: `);
+    httpPort = httpPortInput === '' ? defaultHttpPort : parseInt(httpPortInput.trim(), 10);
+
+    const defaultHttpsPort = config.web?.caddy?.httpsPort || 443;
+    const httpsPortInput = await question(`Enter Caddy HTTPS Port [${defaultHttpsPort}]: `);
+    httpsPort = httpsPortInput === '' ? defaultHttpsPort : parseInt(httpsPortInput.trim(), 10);
+  } else {
+    // Caddy disabled: Ask for Domain/IP for Callback URI construction
+    const defaultDomain = config.web?.domain || 'localhost:4000';
+    const domainInput = await question(`Enter Domain Name or Host:Port for Callback URI (e.g. cc.example.com or localhost:4000) [${defaultDomain}]: `);
+    domain = domainInput === '' ? defaultDomain : domainInput.trim();
+    httpPort = 0;
+    httpsPort = 443;
+  }
+
+  // Calculate Callback and Homepage URLs
+  let callbackUrl = '';
+  let homepageUrl = '';
+  if (enableCaddy) {
+    callbackUrl = `https://${domain}/api/auth/github/callback`;
+    homepageUrl = `https://${domain}`;
+  } else {
+    const isLocal = domain.startsWith('localhost') || domain.startsWith('127.0.0.1');
+    const scheme = isLocal ? 'http' : 'https';
+    callbackUrl = `${scheme}://${domain}/api/auth/github/callback`;
+    homepageUrl = `${scheme}://${domain}`;
+  }
 
   console.log('\n\x1b[36m[Instruction] To configure GitHub OAuth login, create a new OAuth Application on GitHub:');
   console.log('  1. Open: \x1b[34mhttps://github.com/settings/applications/new\x1b[36m');
@@ -98,17 +137,17 @@ async function main() {
 
   const defaultClientId = config.web?.clientId || '';
   const clientIdInput = await question(`Enter your GitHub OAuth Client ID [${defaultClientId}]: `);
-  const clientId = clientIdInput === '' ? defaultClientId : clientIdInput;
+  const clientId = clientIdInput === '' ? defaultClientId : clientIdInput.trim();
 
   const defaultClientSecret = config.web?.clientSecret || '';
   const clientSecretInput = await questionSecret(`Enter your GitHub OAuth Client Secret [${defaultClientSecret ? 'HIDDEN' : 'none'}]: `);
-  const clientSecret = clientSecretInput === '' ? defaultClientSecret : clientSecretInput;
+  const clientSecret = clientSecretInput === '' ? defaultClientSecret : clientSecretInput.trim();
 
   const defaultAllowedUsers = config.web?.allowedUsers || '';
   const allowedUsersInput = await question(`Enter allowed GitHub usernames (comma-separated, e.g., sgomez, user2) [${defaultAllowedUsers}]: `);
-  const allowedUsers = allowedUsersInput === '' ? defaultAllowedUsers : allowedUsersInput;
+  const allowedUsers = allowedUsersInput === '' ? defaultAllowedUsers : allowedUsersInput.trim();
 
-  // Automatic Host & Core Configuration Resolutions
+  // Automatic Host & Core Resolutions
   const webPort = config.web?.port || '4000';
   const githubRepo = config.github?.repo || '';
   const projectPathRaw = config.paths?.workspace || './workspace';
@@ -123,11 +162,6 @@ async function main() {
   const sessionUuid = config.session?.uuid || '';
   const permissionMode = config.permissions?.mode || 'auto';
   
-  const useHeadroom = config.headroom?.enabled || false;
-  const headroomConfig = config.headroom?.configPath || resolvePath('~/.headroom');
-  const headroomProject = config.headroom?.projectName || '';
-  const headroomPort = config.headroom?.hostPort || '8787';
-
   // Host UID/GID dynamic adapters
   const hostUid = process.env.HOST_UID || '1000';
   const hostGid = process.env.HOST_GID || '1000';
@@ -158,13 +192,12 @@ async function main() {
       clientId: clientId,
       clientSecret: clientSecret,
       allowedUsers: allowedUsers,
-      port: webPort
-    },
-    headroom: {
-      enabled: useHeadroom,
-      configPath: headroomConfig,
-      projectName: headroomProject,
-      hostPort: headroomPort
+      port: webPort,
+      caddy: {
+        enabled: enableCaddy,
+        httpPort: httpPort,
+        httpsPort: httpsPort
+      }
     },
     user: {
       puid: hostUid,
@@ -175,6 +208,9 @@ async function main() {
   // Save config.json
   fs.writeFileSync(configFile, JSON.stringify(finalConfig, null, 2), 'utf8');
   console.log(`\n\x1b[32m[Success] Configuration saved to ${configFile}\x1b[0m`);
+
+  // Calculate port bind string
+  const caddyHttpPortBind = (enableCaddy && httpPort > 0) ? `${httpPort}:80` : '127.0.0.1:40080:80';
 
   // Build .env file contents
   const envContent = [
@@ -193,11 +229,9 @@ async function main() {
     `GITHUB_CLIENT_SECRET="${clientSecret}"`,
     `ALLOWED_GITHUB_USERS="${allowedUsers}"`,
     `WEB_PORT="${webPort}"`,
-    `HEADROOM_CONFIG_PATH="${headroomConfig}"`,
-    `HEADROOM_PROJECT_NAME="${headroomProject}"`,
-    `HEADROOM_HOST_PORT="${headroomPort}"`,
-    `COMPOSE_PROFILES="${useHeadroom ? 'headroom' : ''}"`,
-    `ANTHROPIC_BASE_URL="${useHeadroom ? `http://headroom:8787/p/${headroomProject}` : ''}"`,
+    `CADDY_HTTP_PORT_BIND="${caddyHttpPortBind}"`,
+    `CADDY_HTTPS_PORT="${httpsPort}"`,
+    `COMPOSE_PROFILES="${enableCaddy ? 'caddy' : ''}"`,
     `PUID="${hostUid}"`,
     `PGID="${hostGid}"`
   ].join('\n') + '\n';
