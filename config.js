@@ -137,16 +137,30 @@ async function main() {
   const webPasswordInput = await question(`Enter admin password for Web Manager portal [${config.web?.password ? 'HIDDEN' : `Generated: ${defaultWebPassword}`}]: `);
   const webPassword = webPasswordInput === '' ? defaultWebPassword : webPasswordInput;
 
-  let defaultOtpSecret = config.web?.otpSecret;
-  if (!defaultOtpSecret) {
+  let otpSecret = config.web?.otpSecret;
+  if (otpSecret) {
+    const renewOtpInput = await question(`An OTP Secret already exists. Generate a new one? (y/N): `);
+    const renewOtp = ['y', 'yes'].includes(renewOtpInput.toLowerCase().trim());
+    if (renewOtp) {
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+      otpSecret = '';
+      const bytes = crypto.randomBytes(16);
+      for (let i = 0; i < 16; i++) {
+        otpSecret += alphabet[bytes[i] % 32];
+      }
+      console.log('\x1b[33m [Info] Generated new OTP Secret Key.\x1b[0m');
+    } else {
+      console.log(' [Info] Keeping existing OTP Secret Key.');
+    }
+  } else {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    defaultOtpSecret = '';
+    otpSecret = '';
     const bytes = crypto.randomBytes(16);
     for (let i = 0; i < 16; i++) {
-      defaultOtpSecret += alphabet[bytes[i] % 32];
+      otpSecret += alphabet[bytes[i] % 32];
     }
+    console.log('\x1b[32m [Success] Generated new OTP Secret Key.\x1b[0m');
   }
-  const otpSecret = defaultOtpSecret; // Automated generation without prompt
 
   console.log('\n\x1b[36m[Tip] Add this OTP secret to your Authenticator app (e.g. Google Authenticator) using the Key option:');
   console.log(`      Key Name: cc-remote`);
