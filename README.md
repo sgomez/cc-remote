@@ -6,6 +6,10 @@ This project provides a fully configurable Docker setup to run [Claude Code](htt
 
 ## Features
 
+- **Multi-Session Web Manager:** A beautiful, responsive glassmorphic dark-mode web portal to create, start, stop, and destroy sibling Claude Code container sessions on-demand.
+- **Password & TOTP (OTP) Security:** Exposes the web manager securely protected by a portal password and an Authenticator app verification code (TOTP) generated via env vars.
+- **Sandboxed Workspaces (Volumes):** Each session is allocated an isolated Docker volume for its workspace, cloned automatically from GitHub on startup. Deleting a session gives you the option to wipe the volume to conserve space.
+- **Mixed GitHub Tokens:** Supports using the server's default token or pasting a custom token in the client browser (saved in localStorage) to list and clone personal repositories.
 - **VPS-Ready:** Easily host your Claude Code agent on any Linux VPS.
 - **Secure GitHub Auth:** Uses a GitHub Personal Access Token to authenticate all git clone/push/pull commands without exposing SSH keys inside the container.
 - **Dockerized Sandbox:** Runs in an isolated Docker container with essential tools (`git`, `curl`, `gh` CLI).
@@ -97,6 +101,7 @@ During setup, you will be prompted for:
 - Paths for the project directory, Claude configuration directory (`~/.claude`), and session credentials file (`~/.claude.json`).
 - A **Session Name** for Remote Control (defaults to your repository name, e.g. `world-cup-2026`). You can choose to configure a persistent **Session UUID** (to keep the same connection URL across restarts) or a dynamic one (generated on each run to avoid connection locks).
 - A **Permission Mode** for Claude Code (defaults to `auto`).
+- **Web Manager configuration** (admin password, port e.g. `4000`, and OTP secret for TOTP authenticator verification).
 - Whether to enable **Headroom** context compression (experimental, disabled by default). If enabled, the project name for Headroom stats will default to your Session Name.
 
 ### 3. Run the Container
@@ -118,6 +123,31 @@ docker compose logs -f
 ```
 
 Click the provided URL, sign in with your Anthropic account, copy the authentication token, and execute it into the container (if the remote control asks for it), or ensure your host configuration (`~/.claude.json`) is correctly populated under the same user running the docker commands.
+
+---
+
+## Web Manager & Multi-Session Portal
+
+The project features a built-in web management interface (`web-manager` service). It allows you to dynamically spin up, start, stop, and destroy Claude Code container sessions from your browser. Each session gets its own isolated Docker volume and workspace sandbox.
+
+### Accessing the Web Manager
+
+1. Open your browser and navigate to `http://<your-vps-ip>:4000` (or your configured `WEB_PORT`).
+2. Log in using your configured portal **password** and the current 6-digit **OTP verification code** from your authenticator app (e.g., Google Authenticator, Authy).
+
+### Sibling Container Architecture
+
+To avoid heavy nesting, performance hits, and security vulnerabilities associated with Docker-in-Docker (DinD), this project uses a **Sibling Containers** architecture:
+- The `web-manager` container mounts the host's `/var/run/docker.sock`.
+- When you click "Launch Container", the web manager calls the Docker API to create and start a sibling container running the `cc-remote-claude-agent` image.
+- Claude credentials (`~/.claude.json` and `~/.claude`) are safely mounted from the host, allowing all dynamically spawned containers to share the same authentication state.
+
+### Session Workspace Lifecycle
+
+- **Isolation**: Each container session runs in isolation, mounting a dedicated Docker volume named `cc-remote-workspace-<session_name>`.
+- **Auto-Cloning**: The entrypoint script automatically clones the specified GitHub repository into the empty volume on container startup.
+- **Teardown**: When you delete a session from the web dashboard, you are prompted with a checkbox to also delete the associated workspace volume. Keeping the volume unchecked preserves the code state for future runs.
+- **GitHub Tokens**: In the web UI, you can click the GitHub Settings button to paste a custom Personal Access Token. This token is stored securely in your browser's `localStorage` and will override the default server token to load your private repositories and authenticate clones.
 
 ---
 
