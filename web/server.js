@@ -425,7 +425,14 @@ app.get('/api/sessions/:name/logs', requireAuth, async (req, res) => {
       logsText = logBuffer.toString('utf8');
     }
 
-    res.json({ logs: logsText });
+    // Strip ANSI escape codes (colors, cursor controls, resets)
+    const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+    const cleanLogs = logsText
+      .replace(ansiRegex, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+
+    res.json({ logs: cleanLogs });
   } catch (err) {
     res.status(500).json({ error: `Failed to retrieve logs: ${err.message}` });
   }
