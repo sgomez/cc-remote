@@ -7,7 +7,6 @@ services:
     tty: true
     stdin_open: true
     environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_REPO=${GITHUB_REPO}
       - GIT_USER_NAME=${GIT_USER_NAME}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL}

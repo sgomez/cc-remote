@@ -49,53 +49,6 @@ function resolvePath(userPath) {
   return userPath;
 }
 
-// GitHub API helper
-function fetchGithubIdentity(token) {
-  return new Promise((resolve) => {
-    if (!token) return resolve(null);
-    
-    const options = {
-      hostname: 'api.github.com',
-      port: 443,
-      path: '/user',
-      method: 'GET',
-      headers: {
-        'User-Agent': 'node-config-agent',
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json'
-      },
-      timeout: 5000
-    };
-
-    const req = https.get(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        if (res.statusCode === 200) {
-          try {
-            const parsed = JSON.parse(data);
-            resolve({
-              login: parsed.login,
-              name: parsed.name || parsed.login,
-              email: parsed.email || `${parsed.login}@users.noreply.github.com`
-            });
-          } catch (e) {
-            resolve(null);
-          }
-        } else {
-          resolve(null);
-        }
-      });
-    });
-
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
-}
-
 async function main() {
   let config = {};
   const configFile = 'config.json';
@@ -109,28 +62,24 @@ async function main() {
     }
   }
 
-  console.log('\x1b[35m--- GitHub Token Configuration ---\x1b[0m');
-  const patUrl = 'https://github.com/settings/personal-access-tokens/new?name=Claude+Code+Remote+Token&description=Token+for+Claude+Code+Remote+Sandbox+with+contents+and+PR+access&metadata=read&contents=write&pull_requests=write&expires_in=none';
-  console.log('\n\x1b[36m[Tip] You can quickly generate a Fine-Grained GitHub PAT by opening this link:');
-  console.log(`\x1b[34m${patUrl}\x1b[0m\n`);
+  // Resolve Git configurations from host globally
+  let gitName = config.git?.name || '';
+  let gitEmail = config.git?.email || '';
 
-  const tokenDefault = config.github?.token || '';
-  const tokenInput = await questionSecret(`Enter GitHub Personal Access Token (Optional) [${tokenDefault ? 'HIDDEN' : 'none'}]: `);
-  const token = tokenInput === '' ? tokenDefault : tokenInput;
-
-  let githubIdentity = null;
-  if (token) {
-    console.log(' [Info] Fetching identity from GitHub API...');
-    githubIdentity = await fetchGithubIdentity(token);
-    if (githubIdentity) {
-      console.log(` [Info] GitHub User Found: \x1b[34m${githubIdentity.login}\x1b[0m (${githubIdentity.name} <${githubIdentity.email}>)`);
-    } else {
-      console.log(' \x1b[33m[Warning] Could not retrieve GitHub user. Token might be invalid or rate-limited.\x1b[0m');
+  try {
+    if (!gitName) {
+      gitName = execSync('git config --global user.name', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
     }
-  }
+  } catch (e) {}
 
-  const gitName = githubIdentity?.name || config.git?.name || 'Claude Remote Agent';
-  const gitEmail = githubIdentity?.email || config.git?.email || 'agent@example.com';
+  try {
+    if (!gitEmail) {
+      gitEmail = execSync('git config --global user.email', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    }
+  } catch (e) {}
+
+  if (!gitName) gitName = 'Claude Remote Agent';
+  if (!gitEmail) gitEmail = 'agent@example.com';
 
   console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
   const defaultDomain = config.web?.domain || '';
@@ -186,7 +135,6 @@ async function main() {
   // Construct JSON config
   const finalConfig = {
     github: {
-      token: token,
       repo: githubRepo
     },
     git: {
@@ -231,7 +179,6 @@ async function main() {
   // Build .env file contents
   const envContent = [
     `# Auto-generated configuration by config.js`,
-    `GITHUB_TOKEN="${token}"`,
     `GITHUB_REPO="${githubRepo}"`,
     `GIT_USER_NAME="${gitName}"`,
     `GIT_USER_EMAIL="${gitEmail}"`,
