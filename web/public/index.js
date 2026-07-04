@@ -33,6 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const deleteModal = document.getElementById('delete-modal');
   const deleteSessionDisplay = document.getElementById('delete-session-display');
   const deleteVolumeCheckbox = document.getElementById('delete-volume-checkbox');
+  const deleteConfirmInput = document.getElementById('delete-confirm-input');
+  const deleteConfirmNameLabel = document.getElementById('delete-confirm-name-label');
   const deleteError = document.getElementById('delete-error');
   const btnConfirmDelete = document.getElementById('btn-confirm-delete');
 
@@ -237,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
       createModal.classList.add('hidden');
       deleteModal.classList.add('hidden');
       logsModal.classList.add('hidden');
+      deleteConfirmInput.value = '';
       activeLogsSessionName = null;
     });
   });
@@ -444,13 +447,31 @@ document.addEventListener('DOMContentLoaded', () => {
   function openDeleteModal(name) {
     activeDeleteSessionName = name;
     deleteSessionDisplay.textContent = name;
-    deleteVolumeCheckbox.checked = true;
+    deleteConfirmNameLabel.textContent = name;
+    deleteConfirmInput.value = '';
+    deleteVolumeCheckbox.checked = false;
+    btnConfirmDelete.setAttribute('disabled', 'disabled');
+    btnConfirmDelete.style.opacity = '0.5';
+    btnConfirmDelete.style.cursor = 'not-allowed';
     deleteError.classList.add('hidden');
     deleteModal.classList.remove('hidden');
   }
 
+  deleteConfirmInput.addEventListener('input', (e) => {
+    if (e.target.value.trim() === activeDeleteSessionName) {
+      btnConfirmDelete.removeAttribute('disabled');
+      btnConfirmDelete.style.opacity = '1';
+      btnConfirmDelete.style.cursor = 'pointer';
+    } else {
+      btnConfirmDelete.setAttribute('disabled', 'disabled');
+      btnConfirmDelete.style.opacity = '0.5';
+      btnConfirmDelete.style.cursor = 'not-allowed';
+    }
+  });
+
   btnConfirmDelete.addEventListener('click', async () => {
     if (!activeDeleteSessionName) return;
+    if (deleteConfirmInput.value.trim() !== activeDeleteSessionName) return;
 
     deleteError.classList.add('hidden');
     const deleteVolume = deleteVolumeCheckbox.checked;
@@ -471,17 +492,19 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (res.ok) {
         deleteModal.classList.add('hidden');
+        deleteConfirmInput.value = '';
         loadSessions();
       } else {
         const data = await res.json();
         showError(deleteError, data.error || 'Failed to delete container session.');
+        btnConfirmDelete.removeAttribute('disabled');
       }
     } catch (err) {
       showError(deleteError, 'Network error. Failed to reach server.');
+      btnConfirmDelete.removeAttribute('disabled');
     } finally {
       btnText.classList.remove('hidden');
       btnSpinner.classList.add('hidden');
-      btnConfirmDelete.removeAttribute('disabled');
       activeDeleteSessionName = null;
     }
   });
