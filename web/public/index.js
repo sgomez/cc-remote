@@ -19,7 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const createModal = document.getElementById('create-modal');
   const createForm = document.getElementById('create-session-form');
   const sessionNameInput = document.getElementById('session-name-input');
-  const repoSelect = document.getElementById('repo-select');
+  const repoSearchInput = document.getElementById('repo-search-input');
+  const repoDropdownList = document.getElementById('repo-dropdown-list');
+  const repoSelectGroup = document.getElementById('repo-select-group');
   const btnReloadRepos = document.getElementById('btn-reload-repos');
   const toggleManualRepo = document.getElementById('toggle-manual-repo');
   const manualRepoGroup = document.getElementById('manual-repo-group');
@@ -37,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // State
   let activeDeleteSessionName = null;
   let isManualRepoActive = false;
+  let repositories = [];
 
   // Initialize Lucide Icons
   if (typeof lucide !== 'undefined') {
@@ -226,9 +229,10 @@ document.addEventListener('DOMContentLoaded', () => {
     createError.classList.add('hidden');
     sessionNameInput.value = '';
     repoManualInput.value = '';
+    repoSearchInput.value = '';
     isManualRepoActive = false;
     manualRepoGroup.classList.add('hidden');
-    repoSelect.classList.remove('hidden');
+    repoSelectGroup.classList.remove('hidden');
     btnReloadRepos.classList.remove('hidden');
     toggleManualRepo.textContent = 'Or enter repository path manually';
     createModal.classList.remove('hidden');
@@ -243,40 +247,93 @@ document.addEventListener('DOMContentLoaded', () => {
     isManualRepoActive = !isManualRepoActive;
     if (isManualRepoActive) {
       manualRepoGroup.classList.remove('hidden');
-      repoSelect.classList.add('hidden');
+      repoSelectGroup.classList.add('hidden');
       btnReloadRepos.classList.add('hidden');
-      repoSelect.removeAttribute('required');
+      repoSearchInput.removeAttribute('required');
       repoManualInput.setAttribute('required', 'required');
       toggleManualRepo.textContent = 'Use repository list selection';
     } else {
       manualRepoGroup.classList.add('hidden');
-      repoSelect.classList.remove('hidden');
+      repoSelectGroup.classList.remove('hidden');
       btnReloadRepos.classList.remove('hidden');
-      repoSelect.setAttribute('required', 'required');
+      repoSearchInput.setAttribute('required', 'required');
       repoManualInput.removeAttribute('required');
       toggleManualRepo.textContent = 'Or enter repository path manually';
     }
   });
 
+  // Filter and render repositories inside the combobox dropdown
+  function renderDropdown(filterText = '') {
+    repoDropdownList.innerHTML = '';
+    const filtered = repositories.filter(repo => 
+      repo.full_name.toLowerCase().includes(filterText.toLowerCase())
+    );
+
+    if (filtered.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'combobox-item';
+      emptyDiv.style.cursor = 'default';
+      emptyDiv.style.color = 'var(--text-muted)';
+      emptyDiv.textContent = 'No matching repositories';
+      repoDropdownList.appendChild(emptyDiv);
+      return;
+    }
+
+    filtered.forEach(repo => {
+      const item = document.createElement('div');
+      item.className = 'combobox-item';
+      item.dataset.value = repo.full_name;
+      item.innerHTML = `
+        <span>${repo.full_name}</span>
+        ${repo.private ? '<span class="item-private">Private</span>' : ''}
+      `;
+
+      item.addEventListener('click', () => {
+        repoSearchInput.value = repo.full_name;
+        repoDropdownList.classList.add('hidden');
+      });
+
+      repoDropdownList.appendChild(item);
+    });
+  }
+
+  // Handle typing inside search input
+  repoSearchInput.addEventListener('input', (e) => {
+    renderDropdown(e.target.value);
+    repoDropdownList.classList.remove('hidden');
+  });
+
+  // Focus displays list
+  repoSearchInput.addEventListener('focus', () => {
+    renderDropdown(repoSearchInput.value);
+    repoDropdownList.classList.remove('hidden');
+  });
+
+  // Clicking outside the combobox wrapper closes it
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.combobox-wrapper')) {
+      repoDropdownList.classList.add('hidden');
+    }
+  });
+
   async function loadRepos() {
-    repoSelect.innerHTML = '<option value="" disabled selected>Loading repositories...</option>';
+    repositories = [];
+    repoSearchInput.value = '';
+    repoSearchInput.placeholder = 'Loading repositories...';
+    repoSearchInput.setAttribute('disabled', 'disabled');
     
     try {
       const res = await fetch('/api/repos');
       if (!res.ok) {
         throw new Error('Failed response');
       }
-      const repos = await res.json();
-      
-      repoSelect.innerHTML = '<option value="" disabled selected>Select a repository...</option>';
-      repos.forEach(repo => {
-        const opt = document.createElement('option');
-        opt.value = repo.full_name;
-        opt.textContent = `${repo.full_name} ${repo.private ? '(Private)' : ''}`;
-        repoSelect.appendChild(opt);
-      });
+      repositories = await res.json();
+      repoSearchInput.placeholder = 'Search or select a repository...';
+      repoSearchInput.removeAttribute('disabled');
+      renderDropdown();
     } catch (err) {
-      repoSelect.innerHTML = '<option value="" disabled selected>Failed to load repositories.</option>';
+      repoSearchInput.placeholder = 'Failed to load repositories.';
+      repositories = [];
     }
   }
 
@@ -287,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     createError.classList.add('hidden');
 
     const name = sessionNameInput.value.trim();
-    const repo = isManualRepoActive ? repoManualInput.value.trim() : repoSelect.value;
+    const repo = isManualRepoActive ? repoManualInput.value.trim() : repoSearchInput.value.trim();
 
     // Frontend validations
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {

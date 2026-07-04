@@ -105,12 +105,17 @@
           <p class="input-help">This determines the container name and the Claude Remote session ID.</p>
         </div>
         
-        <div class="form-group">
-          <label for="repo-select">Select GitHub Repository</label>
+        <div class="form-group" id="repo-select-group">
+          <label for="repo-search-input">Select GitHub Repository</label>
           <div class="repo-selection-container">
-            <select id="repo-select" class="form-control" required>
-              <option value="" disabled selected>Loading repositories...</option>
-            </select>
+            <div class="input-wrapper combobox-wrapper" style="flex: 1;">
+              <i data-lucide="github" class="input-icon"></i>
+              <input type="text" id="repo-search-input" class="form-control combobox-input" placeholder="Search or select a repository..." autocomplete="off">
+              <i data-lucide="chevron-down" class="combobox-arrow"></i>
+              <div id="repo-dropdown-list" class="combobox-dropdown hidden">
+                <!-- Filtered items will be injected here -->
+              </div>
+            </div>
             <button type="button" id="btn-reload-repos" class="btn btn-secondary btn-icon" title="Reload Repository List">
               <i data-lucide="refresh-cw"></i>
             </button>
