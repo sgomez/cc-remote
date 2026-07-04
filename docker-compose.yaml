@@ -29,12 +29,12 @@ services:
     build: ./web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-4000}:4000"
+      - "127.0.0.1:${WEB_PORT:-4000}:4000"
     environment:
       - WEB_PORT=4000
-      - WEB_PASSWORD=${WEB_PASSWORD}
-      - OTP_SECRET=${OTP_SECRET}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - ALLOWED_GITHUB_USERS=${ALLOWED_GITHUB_USERS}
       - CLAUDE_CONFIG_PATH=${CLAUDE_CONFIG_PATH}
       - CLAUDE_JSON_PATH=${CLAUDE_JSON_PATH}
       - GIT_USER_NAME=${GIT_USER_NAME}
@@ -46,6 +46,21 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web-manager
+
   headroom:
     image: ghcr.io/chopratejas/headroom:latest
     restart: unless-stopped
@@ -55,6 +70,10 @@ services:
       - "127.0.0.1:${HEADROOM_HOST_PORT:-8787}:8787"
     volumes:
       - ${HEADROOM_CONFIG_PATH}:/root/.headroom
+
+volumes:
+  caddy_data:
+  caddy_config:
 
 
 

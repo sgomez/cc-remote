@@ -3,21 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginScreen = document.getElementById('login-screen');
   const dashboardScreen = document.getElementById('dashboard-screen');
   
-  // Forms & Inputs
-  const loginForm = document.getElementById('login-form');
-  const passwordInput = document.getElementById('password');
-  const otpInput = document.getElementById('otp');
+  // Login & Error Elements
+  const btnLoginGithub = document.getElementById('btn-login-github');
   const loginError = document.getElementById('login-error');
   
   // Dashboard & Navigation
   const btnLogout = document.getElementById('btn-logout');
-  const btnShowSettings = document.getElementById('btn-show-settings');
-  const btnCloseSettings = document.getElementById('btn-close-settings');
-  const settingsPanel = document.getElementById('settings-panel');
-  const tokenOverrideInput = document.getElementById('github-token-override');
-  const btnSaveSettings = document.getElementById('btn-save-settings');
-  const btnClearSettings = document.getElementById('btn-clear-settings');
-  
   const sessionsGrid = document.getElementById('sessions-grid');
   const emptyState = document.getElementById('empty-state');
   const btnRefreshSessions = document.getElementById('btn-refresh-sessions');
@@ -52,16 +43,45 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
   }
 
+  // Check URL query parameters for OAuth authentication errors
+  checkQueryErrors();
+
   // Check Authentication on Page Load
   checkAuth();
 
-  // Load saved token override from LocalStorage
-  const savedToken = localStorage.getItem('github_token_override');
-  if (savedToken) {
-    tokenOverrideInput.value = savedToken;
+  // --- Auth Functions ---
+  function checkQueryErrors() {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    if (error) {
+      loginError.classList.remove('hidden');
+      const errorMsg = loginError.querySelector('.error-msg');
+      
+      switch (error) {
+        case 'unauthorized':
+          errorMsg.textContent = 'Access denied. Your GitHub account is not in the ALLOWED_GITHUB_USERS list.';
+          break;
+        case 'token_exchange_failed':
+          errorMsg.textContent = 'Authentication failed: Unable to exchange code for token.';
+          break;
+        case 'profile_fetch_failed':
+          errorMsg.textContent = 'Authentication failed: Unable to fetch GitHub user profile.';
+          break;
+        case 'no_code_provided':
+          errorMsg.textContent = 'Authentication failed: GitHub auth code not received.';
+          break;
+        case 'server_error':
+          errorMsg.textContent = 'Authentication failed: An internal server error occurred.';
+          break;
+        default:
+          errorMsg.textContent = 'Authentication failed. Please try again.';
+      }
+
+      // Clear query params to make URL clean
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }
 
-  // --- Auth Functions ---
   async function checkAuth() {
     try {
       const res = await fetch('/api/auth/check');
@@ -87,33 +107,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Handle Login Submit
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    loginError.classList.add('hidden');
-    
-    const password = passwordInput.value;
-    const otp = otpInput.value.trim();
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, otp })
-      });
-      
-      const data = await res.json();
-      if (res.ok && data.success) {
-        passwordInput.value = '';
-        otpInput.value = '';
-        showScreen('dashboard');
-        loadSessions();
-      } else {
-        showError(loginError, data.error || 'Invalid credentials.');
-      }
-    } catch (err) {
-      showError(loginError, 'Network error. Please try again.');
-    }
+  // Handle GitHub Login redirect
+  btnLoginGithub.addEventListener('click', () => {
+    window.location.href = '/api/auth/login';
   });
 
   // Handle Logout
@@ -123,40 +119,6 @@ document.addEventListener('DOMContentLoaded', () => {
       showScreen('login');
     } catch (e) {
       showScreen('login');
-    }
-  });
-
-  // --- Settings Panel ---
-  btnShowSettings.addEventListener('click', () => {
-    settingsPanel.classList.toggle('hidden');
-  });
-  btnCloseSettings.addEventListener('click', () => {
-    settingsPanel.classList.add('hidden');
-  });
-
-  btnSaveSettings.addEventListener('click', () => {
-    const val = tokenOverrideInput.value.trim();
-    if (val) {
-      localStorage.setItem('github_token_override', val);
-      alert('GitHub token override saved!');
-    } else {
-      localStorage.removeItem('github_token_override');
-      alert('Token override cleared.');
-    }
-    settingsPanel.classList.add('hidden');
-    // Refresh repo list if creation modal is open
-    if (!createModal.classList.contains('hidden')) {
-      loadRepos();
-    }
-  });
-
-  btnClearSettings.addEventListener('click', () => {
-    tokenOverrideInput.value = '';
-    localStorage.removeItem('github_token_override');
-    alert('Token override cleared.');
-    settingsPanel.classList.add('hidden');
-    if (!createModal.classList.contains('hidden')) {
-      loadRepos();
     }
   });
 
@@ -298,15 +260,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadRepos() {
     repoSelect.innerHTML = '<option value="" disabled selected>Loading repositories...</option>';
-    const overrideToken = localStorage.getItem('github_token_override') || '';
     
-    let url = '/api/repos';
-    if (overrideToken) {
-      url += `?token=${encodeURIComponent(overrideToken)}`;
-    }
-
     try {
-      const res = await fetch(url);
+      const res = await fetch('/api/repos');
       if (!res.ok) {
         throw new Error('Failed response');
       }
@@ -332,7 +288,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const name = sessionNameInput.value.trim();
     const repo = isManualRepoActive ? repoManualInput.value.trim() : repoSelect.value;
-    const clientToken = localStorage.getItem('github_token_override') || '';
 
     // Frontend validations
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
@@ -356,7 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, repo, clientToken })
+        body: JSON.stringify({ name, repo })
       });
       
       const data = await res.json();

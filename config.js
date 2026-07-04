@@ -133,48 +133,31 @@ async function main() {
   const gitEmail = githubIdentity?.email || config.git?.email || 'agent@example.com';
 
   console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
-  const defaultWebPassword = config.web?.password || crypto.randomBytes(8).toString('hex');
-  const webPasswordInput = await question(`Enter admin password for Web Manager portal [${config.web?.password ? 'HIDDEN' : `Generated: ${defaultWebPassword}`}]: `);
-  const webPassword = webPasswordInput === '' ? defaultWebPassword : webPasswordInput;
+  const defaultDomain = config.web?.domain || '';
+  const domainInput = await question(`Enter your VPS Domain Name (e.g., cc.example.com) [${defaultDomain}]: `);
+  const domain = domainInput === '' ? defaultDomain : domainInput;
 
-  let otpSecret = config.web?.otpSecret;
-  if (otpSecret) {
-    const renewOtpInput = await question(`An OTP Secret already exists. Generate a new one? (y/N): `);
-    const renewOtp = ['y', 'yes'].includes(renewOtpInput.toLowerCase().trim());
-    if (renewOtp) {
-      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-      otpSecret = '';
-      const bytes = crypto.randomBytes(16);
-      for (let i = 0; i < 16; i++) {
-        otpSecret += alphabet[bytes[i] % 32];
-      }
-      console.log('\x1b[33m [Info] Generated new OTP Secret Key.\x1b[0m');
-    } else {
-      console.log(' [Info] Keeping existing OTP Secret Key.');
-    }
-  } else {
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    otpSecret = '';
-    const bytes = crypto.randomBytes(16);
-    for (let i = 0; i < 16; i++) {
-      otpSecret += alphabet[bytes[i] % 32];
-    }
-    console.log('\x1b[32m [Success] Generated new OTP Secret Key.\x1b[0m');
-  }
+  const callbackUrl = domain ? `https://${domain}/api/auth/github/callback` : 'http://localhost:4000/api/auth/github/callback';
+  const homepageUrl = domain ? `https://${domain}` : 'http://localhost:4000';
 
-  console.log('\n\x1b[36m[Tip] Add this OTP secret to your Authenticator app (e.g. Google Authenticator) using the Key option:');
-  console.log(`      Key Name: cc-remote`);
-  console.log(`      Secret Key: \x1b[32m${otpSecret}\x1b[0m`);
-  console.log(`      Type: Time-based (TOTP)\n\x1b[0m`);
+  console.log('\n\x1b[36m[Instruction] To configure GitHub OAuth login, create a new OAuth Application on GitHub:');
+  console.log('  1. Open: \x1b[34mhttps://github.com/settings/applications/new\x1b[36m');
+  console.log('  2. Set Application Name to: \x1b[32mcc-remote-web-manager\x1b[36m');
+  console.log(`  3. Set Homepage URL to: \x1b[32m${homepageUrl}\x1b[36m`);
+  console.log(`  4. Set Authorization callback URL to: \x1b[32m${callbackUrl}\x1b[36m`);
+  console.log('  5. Click "Register application". Then copy the Client ID and generate a Client Secret.\n\x1b[0m');
 
-  try {
-    const otpAuthUrl = `otpauth://totp/cc-remote?secret=${otpSecret}&issuer=cc-remote`;
-    console.log('\x1b[36mOr scan this QR code with your Authenticator app:\x1b[0m');
-    const qrCodeOutput = execSync(`npx -y qrcode --small "${otpAuthUrl}"`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    console.log(qrCodeOutput);
-  } catch (err) {
-    // Fall back silently if npx or qrcode fails
-  }
+  const defaultClientId = config.web?.clientId || '';
+  const clientIdInput = await question(`Enter your GitHub OAuth Client ID [${defaultClientId}]: `);
+  const clientId = clientIdInput === '' ? defaultClientId : clientIdInput;
+
+  const defaultClientSecret = config.web?.clientSecret || '';
+  const clientSecretInput = await questionSecret(`Enter your GitHub OAuth Client Secret [${defaultClientSecret ? 'HIDDEN' : 'none'}]: `);
+  const clientSecret = clientSecretInput === '' ? defaultClientSecret : clientSecretInput;
+
+  const defaultAllowedUsers = config.web?.allowedUsers || '';
+  const allowedUsersInput = await question(`Enter allowed GitHub usernames (comma-separated, e.g., sgomez, user2) [${defaultAllowedUsers}]: `);
+  const allowedUsers = allowedUsersInput === '' ? defaultAllowedUsers : allowedUsersInput;
 
   // Automatic Host & Core Configuration Resolutions
   const webPort = config.web?.port || '4000';
@@ -223,9 +206,11 @@ async function main() {
       mode: permissionMode
     },
     web: {
-      port: webPort,
-      password: webPassword,
-      otpSecret: otpSecret
+      domain: domain,
+      clientId: clientId,
+      clientSecret: clientSecret,
+      allowedUsers: allowedUsers,
+      port: webPort
     },
     headroom: {
       enabled: useHeadroom,
@@ -256,9 +241,11 @@ async function main() {
     `SESSION_NAME="${sessionName}"`,
     `SESSION_UUID="${sessionUuid}"`,
     `PERMISSION_MODE="${permissionMode}"`,
+    `DOMAIN_NAME="${domain}"`,
+    `GITHUB_CLIENT_ID="${clientId}"`,
+    `GITHUB_CLIENT_SECRET="${clientSecret}"`,
+    `ALLOWED_GITHUB_USERS="${allowedUsers}"`,
     `WEB_PORT="${webPort}"`,
-    `WEB_PASSWORD="${webPassword}"`,
-    `OTP_SECRET="${otpSecret}"`,
     `HEADROOM_CONFIG_PATH="${headroomConfig}"`,
     `HEADROOM_PROJECT_NAME="${headroomProject}"`,
     `HEADROOM_HOST_PORT="${headroomPort}"`,

@@ -287,6 +287,18 @@ label {
   background: var(--danger);
   color: #fff;
   box-shadow: 0 4px 15px var(--danger-glow);
+.btn-github {
+  background: #24292f;
+  color: #fff;
+  border-color: #2f363d;
+  box-shadow: 0 4px 15px rgba(36, 41, 47, 0.3);
+}
+
+.btn-github:hover {
+  background: #1c1f23;
+  border-color: #444d56;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(36, 41, 47, 0.45);
 }
 
 .btn-sm {

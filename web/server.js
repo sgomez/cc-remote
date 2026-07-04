@@ -1,23 +1,22 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
-const { authenticator } = require('otplib');
 const Docker = require('dockerode');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
 
-// Load environment variables if running locally, or default to process.env
+// Environment Variables
 const PORT = process.env.WEB_PORT || 4000;
-const WEB_PASSWORD = process.env.WEB_PASSWORD;
-const OTP_SECRET = process.env.OTP_SECRET;
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+const ALLOWED_GITHUB_USERS = process.env.ALLOWED_GITHUB_USERS || '';
 const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
 const AGENT_IMAGE = process.env.AGENT_IMAGE || 'cc-remote-claude-agent';
 
-// Host paths and configs to mount to session containers
+// Host paths to mount to session containers
 const CLAUDE_CONFIG_PATH = process.env.CLAUDE_CONFIG_PATH;
 const CLAUDE_JSON_PATH = process.env.CLAUDE_JSON_PATH;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GIT_USER_NAME = process.env.GIT_USER_NAME || '';
 const GIT_USER_EMAIL = process.env.GIT_USER_EMAIL || '';
 const PUID = process.env.PUID || '1000';
@@ -28,6 +27,7 @@ const PERMISSION_MODE = process.env.PERMISSION_MODE || 'auto';
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
 const app = express();
+app.set('trust proxy', true); // Trust Caddy reverse proxy headers
 app.use(express.json());
 app.use(cookieParser());
 
@@ -42,7 +42,8 @@ function requireAuth(req, res, next) {
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.authenticated) {
+    if (decoded.authenticated && decoded.accessToken) {
+      req.user = decoded;
       return next();
     }
     return res.status(401).json({ error: 'Unauthorized.' });
@@ -51,48 +52,51 @@ function requireAuth(req, res, next) {
   }
 }
 
-// Helper: Make https request to GitHub
-function fetchReposFromGithub(token) {
+// Helper: General HTTPS Request maker
+function makeHttpsRequest(options, postData = null) {
   return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.github.com',
-      port: 443,
-      path: '/user/repos?per_page=100&sort=updated',
-      method: 'GET',
-      headers: {
-        'User-Agent': 'cc-remote-web-manager',
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json'
-      }
-    };
-
-    const req = https.get(options, (res) => {
+    const req = https.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        if (res.statusCode === 200) {
-          try {
-            const repos = JSON.parse(data).map(r => ({
-              id: r.id,
-              full_name: r.full_name,
-              private: r.private,
-              html_url: r.html_url
-            }));
-            resolve(repos);
-          } catch (e) {
-            reject(new Error('Failed to parse GitHub response'));
-          }
-        } else {
-          reject(new Error(`GitHub returned status code ${res.statusCode}`));
-        }
+        resolve({ statusCode: res.statusCode, headers: res.headers, body: data });
       });
     });
-
     req.on('error', (err) => reject(err));
+    if (postData) {
+      req.write(postData);
+    }
+    req.end();
   });
 }
 
-// --- API Endpoints ---
+// Helper: Make https request to GitHub
+async function fetchReposFromGithub(token) {
+  const options = {
+    hostname: 'api.github.com',
+    port: 443,
+    path: '/user/repos?per_page=100&sort=updated',
+    method: 'GET',
+    headers: {
+      'User-Agent': 'cc-remote-web-manager',
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json'
+    }
+  };
+
+  const response = await makeHttpsRequest(options);
+  if (response.statusCode === 200) {
+    return JSON.parse(response.body).map(r => ({
+      id: r.id,
+      full_name: r.full_name,
+      private: r.private,
+      html_url: r.html_url
+    }));
+  }
+  throw new Error(`GitHub returned status code ${response.statusCode}: ${response.body}`);
+}
+
+// --- API & Auth Endpoints ---
 
 // Check login status
 app.get('/api/auth/check', (req, res) => {
@@ -100,44 +104,120 @@ app.get('/api/auth/check', (req, res) => {
   if (!token) return res.json({ authenticated: false });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    return res.json({ authenticated: !!decoded.authenticated });
+    return res.json({ 
+      authenticated: !!decoded.authenticated, 
+      username: decoded.username 
+    });
   } catch (err) {
     return res.json({ authenticated: false });
   }
 });
 
-// Login
-app.post('/api/auth/login', (req, res) => {
-  const { password, otp } = req.body;
-
-  if (!WEB_PASSWORD || !OTP_SECRET) {
-    return res.status(500).json({ error: 'Server authentication parameters are not configured in environment.' });
+// Redirect to GitHub Login page
+app.get('/api/auth/login', (req, res) => {
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    return res.status(500).send('GitHub OAuth parameters are not configured in the environment.');
   }
 
-  if (password !== WEB_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid password.' });
+  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/github/callback`;
+  const url = `https://github.com/login/oauth/authorize` + 
+              `?client_id=${GITHUB_CLIENT_ID}` +
+              `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+              `&scope=repo,read:org`;
+
+  res.redirect(url);
+});
+
+// OAuth Callback from GitHub
+app.get('/api/auth/github/callback', async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    return res.redirect('/?error=no_code_provided');
   }
 
-  // otplib expects base32 secret; verify the TOTP code
+  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/github/callback`;
+
   try {
-    const isValidOtp = authenticator.check(otp, OTP_SECRET);
-    if (!isValidOtp) {
-      return res.status(401).json({ error: 'Invalid OTP code.' });
+    // 1. Exchange authorization code for access token
+    const tokenOptions = {
+      hostname: 'github.com',
+      port: 443,
+      path: '/login/oauth/access_token',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'cc-remote-web-manager'
+      }
+    };
+
+    const tokenPostData = JSON.stringify({
+      client_id: GITHUB_CLIENT_ID,
+      client_secret: GITHUB_CLIENT_SECRET,
+      code,
+      redirect_uri: redirectUri
+    });
+
+    const tokenResponse = await makeHttpsRequest(tokenOptions, tokenPostData);
+    const tokenData = JSON.parse(tokenResponse.body);
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) {
+      console.error('Failed to get access token from GitHub:', tokenResponse.body);
+      return res.redirect('/?error=token_exchange_failed');
     }
+
+    // 2. Fetch user profile information
+    const userOptions = {
+      hostname: 'api.github.com',
+      port: 443,
+      path: '/user',
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': 'cc-remote-web-manager',
+        'Accept': 'application/vnd.github+json'
+      }
+    };
+
+    const userResponse = await makeHttpsRequest(userOptions);
+    const userData = JSON.parse(userResponse.body);
+    const username = userData.login;
+
+    if (!username) {
+      console.error('Failed to retrieve username from GitHub profile:', userResponse.body);
+      return res.redirect('/?error=profile_fetch_failed');
+    }
+
+    // 3. Verify access control list (ALLOWED_GITHUB_USERS)
+    const allowedList = ALLOWED_GITHUB_USERS.split(',')
+      .map(u => u.trim().toLowerCase())
+      .filter(u => u.length > 0);
+
+    if (allowedList.length > 0 && !allowedList.includes(username.toLowerCase())) {
+      console.warn(`Access denied for GitHub user: ${username}`);
+      return res.redirect('/?error=unauthorized');
+    }
+
+    // 4. Issue authenticated session JWT cookie valid for 24h
+    const sessionToken = jwt.sign({ 
+      authenticated: true, 
+      username, 
+      accessToken 
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    res.cookie('auth_token', sessionToken, {
+      httpOnly: true,
+      secure: req.protocol === 'https',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    });
+
+    return res.redirect('/');
   } catch (err) {
-    return res.status(500).json({ error: 'OTP verification failed. Check OTP_SECRET format.' });
+    console.error('OAuth Callback Error:', err);
+    return res.redirect('/?error=server_error');
   }
-
-  // Issue stateless JWT token cookie valid for 24h
-  const token = jwt.sign({ authenticated: true }, JWT_SECRET, { expiresIn: '24h' });
-  res.cookie('auth_token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  });
-
-  return res.json({ success: true });
 });
 
 // Logout
@@ -171,7 +251,8 @@ app.get('/api/sessions', requireAuth, async (req, res) => {
 
 // Create Session Container + Volume
 app.post('/api/sessions', requireAuth, async (req, res) => {
-  const { name, repo, clientToken } = req.body;
+  const { name, repo } = req.body;
+  const accessToken = req.user.accessToken;
 
   if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
     return res.status(400).json({ error: 'Invalid session name. Must be alphanumeric with hyphens/underscores.' });
@@ -183,11 +264,6 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
 
   const containerName = `cc-remote-session-${name}`;
   const volumeName = `cc-remote-workspace-${name}`;
-  const tokenToUse = clientToken || GITHUB_TOKEN;
-
-  if (!tokenToUse) {
-    return res.status(400).json({ error: 'GitHub Personal Access Token is required to clone the repository.' });
-  }
 
   if (!CLAUDE_CONFIG_PATH || !CLAUDE_JSON_PATH) {
     return res.status(500).json({ error: 'CLAUDE_CONFIG_PATH or CLAUDE_JSON_PATH is not configured on the host.' });
@@ -205,9 +281,9 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
     console.log(`Creating Docker workspace volume: ${volumeName}`);
     await docker.createVolume({ Name: volumeName });
 
-    // 3. Set environment variables
+    // 3. Set environment variables (injecting OAuth token as GITHUB_TOKEN)
     const env = [
-      `GITHUB_TOKEN=${tokenToUse}`,
+      `GITHUB_TOKEN=${accessToken}`,
       `GITHUB_REPO=${repo}`,
       `GIT_USER_NAME=${GIT_USER_NAME}`,
       `GIT_USER_EMAIL=${GIT_USER_EMAIL}`,
@@ -309,7 +385,6 @@ app.post('/api/sessions/:name/delete', requireAuth, async (req, res) => {
         await volume.remove();
       } catch (volErr) {
         console.error(`Failed to remove volume ${volumeName}:`, volErr);
-        // Do not fail the whole request if the volume delete fails (it might be in use or already gone)
       }
     }
 
@@ -321,15 +396,10 @@ app.post('/api/sessions/:name/delete', requireAuth, async (req, res) => {
 
 // Fetch user repositories from GitHub
 app.get('/api/repos', requireAuth, async (req, res) => {
-  const clientToken = req.query.token;
-  const tokenToUse = clientToken || GITHUB_TOKEN;
-
-  if (!tokenToUse) {
-    return res.status(400).json({ error: 'No GitHub token available. Please provide one.' });
-  }
+  const accessToken = req.user.accessToken;
 
   try {
-    const repos = await fetchReposFromGithub(tokenToUse);
+    const repos = await fetchReposFromGithub(accessToken);
     res.json(repos);
   } catch (err) {
     console.error('GitHub API error:', err);
@@ -341,7 +411,10 @@ app.get('/api/repos', requireAuth, async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Success] Web Manager listening on port ${PORT}`);
   console.log(`[Config] Default Agent Image: ${AGENT_IMAGE}`);
-  if (!WEB_PASSWORD || !OTP_SECRET) {
-    console.warn(`[Warning] WEB_PASSWORD or OTP_SECRET is NOT set! Authentication will fail.`);
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    console.warn(`[Warning] GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET is NOT set! OAuth redirects will fail.`);
+  }
+  if (!ALLOWED_GITHUB_USERS) {
+    console.warn(`[Warning] ALLOWED_GITHUB_USERS is empty! Access will be denied for everyone.`);
   }
 });

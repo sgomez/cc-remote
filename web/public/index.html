@@ -26,30 +26,14 @@
         <h1>cc-remote</h1>
         <p class="subtitle">Secure Session Portal</p>
       </div>
-      <form id="login-form">
-        <div class="form-group">
-          <label for="password">Password</label>
-          <div class="input-wrapper">
-            <i data-lucide="key-round" class="input-icon"></i>
-            <input type="password" id="password" placeholder="••••••••" required>
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="otp">One-Time Password (OTP)</label>
-          <div class="input-wrapper">
-            <i data-lucide="shield-check" class="input-icon"></i>
-            <input type="text" id="otp" placeholder="123456" inputmode="numeric" pattern="[0-9]*" maxlength="6" required>
-          </div>
-        </div>
-        <div id="login-error" class="error-banner hidden">
-          <i data-lucide="alert-circle"></i>
-          <span class="error-msg"></span>
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">
-          <span>Sign In</span>
-          <i data-lucide="arrow-right"></i>
-        </button>
-      </form>
+      <div id="login-error" class="error-banner hidden">
+        <i data-lucide="alert-circle"></i>
+        <span class="error-msg"></span>
+      </div>
+      <button id="btn-login-github" class="btn btn-github btn-block">
+        <i data-lucide="github"></i>
+        <span>Sign In with GitHub</span>
+      </button>
     </div>
 
     <!-- MAIN DASHBOARD -->
@@ -66,9 +50,6 @@
           </div>
         </div>
         <div class="header-actions">
-          <button id="btn-show-settings" class="btn btn-secondary btn-icon" title="GitHub Settings">
-            <i data-lucide="github"></i>
-          </button>
           <button id="btn-new-session" class="btn btn-primary">
             <i data-lucide="plus"></i>
             <span>New Session</span>
@@ -79,25 +60,6 @@
         </div>
       </header>
 
-      <!-- SETTINGS ROW (COLLAPSIBLE GITHUB TOKEN OVERRIDE) -->
-      <section id="settings-panel" class="settings-panel glass-card hidden">
-        <div class="panel-header">
-          <h3><i data-lucide="settings"></i> GitHub Token Configuration</h3>
-          <button id="btn-close-settings" class="btn-close">&times;</button>
-        </div>
-        <p class="panel-desc">By default, the server uses its configured GITHUB_TOKEN environment variable. Paste a custom token below to query your personal GitHub repositories or override clones client-side (saved in your browser only).</p>
-        <div class="form-group">
-          <label for="github-token-override">Custom Fine-Grained PAT Override</label>
-          <div class="input-wrapper">
-            <i data-lucide="lock" class="input-icon"></i>
-            <input type="password" id="github-token-override" placeholder="ghp_xxxxxxxxxxxx (Optional)">
-          </div>
-        </div>
-        <div class="panel-actions">
-          <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
-          <button id="btn-clear-settings" class="btn btn-secondary">Clear Custom Token</button>
-        </div>
-      </section>
 
       <!-- SESSIONS SECTION -->
       <main class="dashboard-content">

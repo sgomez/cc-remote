@@ -7,9 +7,9 @@ This project provides a fully configurable Docker setup to run [Claude Code](htt
 ## Features
 
 - **Multi-Session Web Manager:** A beautiful, responsive glassmorphic dark-mode web portal to create, start, stop, and destroy sibling Claude Code container sessions on-demand.
-- **Password & TOTP (OTP) Security:** Exposes the web manager securely protected by a portal password and an Authenticator app verification code (TOTP) generated via env vars.
+- **GitHub OAuth & ACL Security:** Exposes the web manager securely behind a single-button "Sign In with GitHub" login flow, restricting access to whitelisted accounts specified in `ALLOWED_GITHUB_USERS`.
+- **Automatic HTTPS reverse proxy:** Includes Caddy to automatically provision Let's Encrypt SSL certificates and proxy incoming traffic on ports 80/443 directly to the web portal.
 - **Sandboxed Workspaces (Volumes):** Each session is allocated an isolated Docker volume for its workspace, cloned automatically from GitHub on startup. Deleting a session gives you the option to wipe the volume to conserve space.
-- **Mixed GitHub Tokens:** Supports using the server's default token or pasting a custom token in the client browser (saved in localStorage) to list and clone personal repositories.
 - **VPS-Ready:** Easily host your Claude Code agent on any Linux VPS.
 - **Secure GitHub Auth:** Uses a GitHub Personal Access Token to authenticate all git clone/push/pull commands without exposing SSH keys inside the container.
 - **Dockerized Sandbox:** Runs in an isolated Docker container with essential tools (`git`, `curl`, `gh` CLI).
@@ -29,12 +29,13 @@ Ensure the following tools are installed and configured on your VPS host machine
 - **Docker** and **Docker Compose**
 - **Git**
 - **Claude Code CLI (`@anthropic-ai/claude-code`)**: Before running the sandbox, you must install the Claude Code client on your VPS host and authenticate (by running `claude` and completing the login process) under the same user account that will execute the container. The Docker setup mounts and reads the session configuration (including `~/.claude.json`) directly from this user's home directory.
-- A **GitHub Personal Access Token (PAT)**:
-  - **Quick Creation:** You can use this [pre-filled Fine-Grained PAT template link](https://github.com/settings/personal-access-tokens/new?name=Claude+Code+Remote+Token&description=Token+for+Claude+Code+Remote+Sandbox+with+contents+and+PR+access&metadata=read&contents=write&pull_requests=write&expires_in=none) to auto-populate the required permissions.
-  - **Security Best Practice:** In the token creation form, it is highly recommended to restrict the **Repository access** option to **"Only select repositories"** and select only the repository you want the agent to work on, following the principle of least privilege.
-  - **Repository permissions:** Read & Write access to code (repository/contents).
-  - **Metadata permissions:** Read access to metadata.
-  - **Pull Requests (Optional):** Read & Write access to pull requests if you want the agent to use the GitHub CLI (`gh`), which is pre-installed in the sandbox, to manage PRs (e.g. creating or reviewing PRs).
+- A **GitHub OAuth Application**:
+  - To enable "Sign In with GitHub", you must register an OAuth application on your GitHub developer settings page: [GitHub OAuth Apps](https://github.com/settings/developers).
+  - Configure the application:
+    - **Homepage URL**: `https://<your-vps-domain>` (or `http://localhost:4000` for local test)
+    - **Authorization callback URL**: `https://<your-vps-domain>/api/auth/github/callback` (or `http://localhost:4000/api/auth/github/callback` for local test)
+  - Copy the generated **Client ID** and **Client Secret** keys to use during the configuration wizard.
+- A **GitHub Personal Access Token (PAT)** (optional fallback for non-OAuth listings/manual overrides).
 
 ---
 
@@ -95,13 +96,13 @@ Run the interactive setup script:
 This script runs the interactive setup wizard (`config.js`) inside a temporary Node Docker container to query your VPS settings, validate paths, generate a schema-validated **`config.json`**, and compile the **`.env`** file automatically.
 
 During setup, you will be prompted for:
-- Your **GitHub Personal Access Token**.
-- The default **GitHub Repository** to clone (if the target directory is empty).
-- Git user details (`GIT_USER_NAME` and `GIT_USER_EMAIL`).
-- Paths for the project directory, Claude configuration directory (`~/.claude`), and session credentials file (`~/.claude.json`).
-- A **Session Name** for Remote Control (defaults to your repository name, e.g. `world-cup-2026`). You can choose to configure a persistent **Session UUID** (to keep the same connection URL across restarts) or a dynamic one (generated on each run to avoid connection locks).
-- A **Permission Mode** for Claude Code (defaults to `auto`).
-- **Web Manager configuration** (admin password, port e.g. `4000`, and OTP secret for TOTP authenticator verification).
+- Your **GitHub Personal Access Token** (Optional fallback to set name/email).
+- Your **VPS Domain Name** (e.g., `cc.example.com`).
+- Your **GitHub OAuth Client ID**.
+- Your **GitHub OAuth Client Secret**.
+- Whitelisted GitHub usernames (`ALLOWED_GITHUB_USERS`, comma-separated) allowed to access the system (e.g. `sgomez`).
+- The script automatically outputs a link and a step-by-step console guide to register the GitHub OAuth Application correctly based on the domain you enter.
+- Paths for the project directory, Claude configuration directory (`~/.claude`), and session credentials file (`~/.claude.json`) are resolved automatically.
 - Whether to enable **Headroom** context compression (experimental, disabled by default). If enabled, the project name for Headroom stats will default to your Session Name.
 
 ### 3. Run the Container
@@ -128,12 +129,13 @@ Click the provided URL, sign in with your Anthropic account, copy the authentica
 
 ## Web Manager & Multi-Session Portal
 
-The project features a built-in web management interface (`web-manager` service). It allows you to dynamically spin up, start, stop, and destroy Claude Code container sessions from your browser. Each session gets its own isolated Docker volume and workspace sandbox.
+The project features a built-in web management interface (`web-manager` service) proxy-routed securely behind Caddy. It allows you to dynamically spin up, start, stop, and destroy Claude Code container sessions from your browser. Each session gets its own isolated Docker volume and workspace sandbox.
 
 ### Accessing the Web Manager
 
-1. Open your browser and navigate to `http://<your-vps-ip>:4000` (or your configured `WEB_PORT`).
-2. Log in using your configured portal **password** and the current 6-digit **OTP verification code** from your authenticator app (e.g., Google Authenticator, Authy).
+1. Open your browser and navigate to `https://<your-vps-domain>` (or `http://localhost:4000` for local test environments).
+2. Click **Sign In with GitHub**.
+3. Authorize the application. The backend will verify if your GitHub username is configured in the whitelisted `ALLOWED_GITHUB_USERS` environment variable. If so, a secure signed session cookie is created.
 
 ### Sibling Container Architecture
 
@@ -147,7 +149,7 @@ To avoid heavy nesting, performance hits, and security vulnerabilities associate
 - **Isolation**: Each container session runs in isolation, mounting a dedicated Docker volume named `cc-remote-workspace-<session_name>`.
 - **Auto-Cloning**: The entrypoint script automatically clones the specified GitHub repository into the empty volume on container startup.
 - **Teardown**: When you delete a session from the web dashboard, you are prompted with a checkbox to also delete the associated workspace volume. Keeping the volume unchecked preserves the code state for future runs.
-- **GitHub Tokens**: In the web UI, you can click the GitHub Settings button to paste a custom Personal Access Token. This token is stored securely in your browser's `localStorage` and will override the default server token to load your private repositories and authenticate clones.
+- **Dynamic GitHub Authentication**: The OAuth token obtained during your login is dynamically injected as the `GITHUB_TOKEN` environment variable in the dynamically generated Claude Code session containers, allowing seamless access to clone, fetch, and pull all repositories (personal and organizational) you have access to in your account.
 
 ---
 
