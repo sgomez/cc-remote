@@ -195,6 +195,10 @@ label {
   color: var(--text-muted);
 }
 
+label strong {
+  text-transform: none;
+}
+
 .input-wrapper {
   position: relative;
 }
@@ -245,6 +249,7 @@ label {
   justify-content: center;
   gap: 8px;
   padding: 10px 20px;
+  min-height: 42px;
   border-radius: var(--radius-sm);
   font-family: var(--font-family);
   font-size: 0.95rem;
@@ -262,7 +267,6 @@ label {
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
 }
 
@@ -306,6 +310,7 @@ label {
 .btn-sm {
   padding: 6px 12px;
   font-size: 0.85rem;
+  min-height: 0;
 }
 
 .btn-block {
