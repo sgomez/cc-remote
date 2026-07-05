@@ -483,6 +483,18 @@ label strong {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.status-badge.cloning {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.status-badge.clone_failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
 .status-badge.stopped {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
@@ -500,6 +512,16 @@ label strong {
   background-color: var(--success);
   box-shadow: 0 0 8px var(--success);
   animation: pulse 1.5s infinite;
+}
+
+.status-badge.cloning .status-dot {
+  background-color: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+  animation: pulse 1.5s infinite;
+}
+
+.status-badge.clone_failed .status-dot {
+  background-color: #ef4444;
 }
 
 .status-badge.stopped .status-dot {

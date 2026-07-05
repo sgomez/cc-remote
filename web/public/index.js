@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeLogsSessionName = null;
   let isManualRepoActive = false;
   let repositories = [];
+  let lastSessionsStateJson = '';
 
   // Initialize Lucide Icons
   if (typeof lucide !== 'undefined') {
@@ -153,15 +154,16 @@ document.addEventListener('DOMContentLoaded', () => {
   btnLogout.addEventListener('click', async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
+      lastSessionsStateJson = '';
       showScreen('login');
     } catch (e) {
+      lastSessionsStateJson = '';
       showScreen('login');
     }
   });
 
   // --- Sessions Functions ---
   async function loadSessions() {
-    sessionsGrid.innerHTML = '';
     try {
       const res = await fetch('/api/sessions');
       if (res.status === 401) {
@@ -170,6 +172,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       const sessions = await res.json();
+      const currentStateJson = JSON.stringify(sessions.map(s => ({ name: s.name, status: s.status, created: s.created })));
+      if (currentStateJson === lastSessionsStateJson) {
+        return;
+      }
+      lastSessionsStateJson = currentStateJson;
+
+      sessionsGrid.innerHTML = '';
       if (sessions.length === 0) {
         sessionsGrid.classList.add('hidden');
         emptyState.classList.remove('hidden');
@@ -181,7 +190,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       sessions.forEach(session => {
         const isRunning = session.status === 'running';
-        const statusClass = isRunning ? 'running' : 'stopped';
+        const isCloning = session.status === 'cloning';
+        const isCloneFailed = session.status === 'clone_failed';
+
+        let statusClass = 'stopped';
+        if (isRunning) statusClass = 'running';
+        else if (isCloning) statusClass = 'cloning';
+        else if (isCloneFailed) statusClass = 'clone_failed';
         
         const card = document.createElement('div');
         card.className = 'glass-card session-card';
@@ -189,6 +204,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const safeRepo = escapeHtml(session.repo);
         const safeStatus = escapeHtml(session.status);
         const safeRepoHref = encodeURI(session.repo);
+
+        let actionButtonHtml = '';
+        if (isCloning) {
+          actionButtonHtml = `<button type="button" class="btn btn-secondary btn-sm" disabled><i data-lucide="loader-2" class="spin" style="width: 14px; height: 14px;"></i> Cloning...</button>`;
+        } else if (isCloneFailed) {
+          actionButtonHtml = `<button type="button" class="btn btn-warning btn-sm btn-reset" data-name="${safeName}" data-running="false"><i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i> Retry</button>`;
+        } else if (isRunning) {
+          actionButtonHtml = `<button type="button" class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>`;
+        } else {
+          actionButtonHtml = `<button type="button" class="btn btn-primary btn-sm btn-start" data-name="${safeName}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`;
+        }
+
         card.innerHTML = `
           <div class="session-header">
             <div class="session-meta">
@@ -206,10 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="session-footer">
             <span class="text-muted" style="font-size: 0.8rem;">Created: ${new Date(session.created * 1000).toLocaleDateString()}</span>
             <div class="session-actions">
-              ${isRunning ?
-                `<button type="button" class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>` :
-                `<button type="button" class="btn btn-primary btn-sm btn-start" data-name="${safeName}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`
-              }
+              ${actionButtonHtml}
               <div class="dropdown">
                 <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-name="${safeName}">
                   <span>Actions</span>
@@ -220,15 +244,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i data-lucide="scroll"></i>
                     <span>Logs</span>
                   </button>
-                  <button type="button" class="dropdown-item btn-clone" data-name="${safeName}" data-repo="${safeRepo}">
+                  <button type="button" class="dropdown-item btn-clone" data-name="${safeName}" data-repo="${safeRepo}" ${isCloning || isCloneFailed ? 'disabled' : ''}>
                     <i data-lucide="copy"></i>
                     <span>Clone</span>
                   </button>
-                  <button type="button" class="dropdown-item btn-reset text-warning" data-name="${safeName}" data-running="${isRunning}">
+                  <button type="button" class="dropdown-item btn-reset text-warning" data-name="${safeName}" data-running="${isRunning}" ${isCloning ? 'disabled' : ''}>
                     <i data-lucide="rotate-ccw"></i>
                     <span>Reset</span>
                   </button>
-                  <button type="button" class="dropdown-item btn-delete text-danger" data-name="${safeName}" ${isRunning ? 'disabled title="Stop the container before deleting."' : ''}>
+                  <button type="button" class="dropdown-item btn-delete text-danger" data-name="${safeName}" ${(isRunning || isCloning) ? 'disabled title="Stop the container or wait for cloning to finish before deleting."' : ''}>
                     <i data-lucide="trash-2"></i>
                     <span>Delete</span>
                   </button>
@@ -673,4 +697,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     currentMenu.classList.toggle('show');
   });
+
+  // Periodically refresh sessions (every 4 seconds) to keep status in sync
+  setInterval(() => {
+    if (!dashboardScreen.classList.contains('hidden')) {
+      loadSessions();
+    }
+  }, 4000);
 });

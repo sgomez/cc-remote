@@ -142,15 +142,25 @@ function getRedirectUri(req) {
 // cc-remote (carries the expected label) before any operation touches it.
 async function getSessionContainer(name) {
   const containerName = `cc-remote-session-${name}`;
-  const container = docker.getContainer(containerName);
+  let container = docker.getContainer(containerName);
   let info;
   try {
     info = await container.inspect();
   } catch (err) {
     if (err.statusCode === 404) {
-      return null;
+      const cloneContainerName = `cc-remote-session-clone-${name}`;
+      container = docker.getContainer(cloneContainerName);
+      try {
+        info = await container.inspect();
+      } catch (cloneErr) {
+        if (cloneErr.statusCode === 404) {
+          return null;
+        }
+        throw cloneErr;
+      }
+    } else {
+      throw err;
     }
-    throw err;
   }
   if (!info.Config || !info.Config.Labels || info.Config.Labels['cc-remote-session'] !== 'true') {
     return null;
@@ -416,22 +426,150 @@ app.get('/api/sessions', requireAuth, async (req, res) => {
   try {
     const containers = await docker.listContainers({ all: true });
 
-    // Filter and map containers with the label cc-remote-session
-    const sessions = containers
+    // Filter and map containers with the label cc-remote-session, grouping by session name
+    const sessionsMap = new Map();
+    containers
       .filter(c => c.Labels && c.Labels['cc-remote-session'] === 'true')
-      .map(c => ({
-        name: c.Labels['cc-remote-session-name'],
-        repo: c.Labels['cc-remote-repo'],
-        containerId: c.Id,
-        status: c.State, // running, exited, etc.
-        created: c.Created
-      }));
+      .forEach(c => {
+        const name = c.Labels['cc-remote-session-name'];
+        const repo = c.Labels['cc-remote-repo'];
+        const isCloning = c.Labels['cc-remote-cloning'] === 'true';
+        let status = c.State;
+        if (isCloning) {
+          if (c.State === 'exited') {
+            status = 'clone_failed';
+          } else {
+            status = 'cloning';
+          }
+        }
+        
+        const existing = sessionsMap.get(name);
+        // If we don't have a record yet, or if the current container is the main container (isCloning === false), we update it.
+        // This ensures the main container's status is preferred if both exist momentarily.
+        if (!existing || !isCloning) {
+          sessionsMap.set(name, {
+            name,
+            repo,
+            containerId: c.Id,
+            status: status,
+            created: c.Created
+          });
+        }
+      });
 
-    res.json(sessions);
+    res.json(Array.from(sessionsMap.values()));
   } catch (err) {
     sendDockerError(res, err, 'Failed to list sessions');
   }
 });
+
+// Create Session Container + Volume
+// Dynamic Agent Creation Helper
+async function createMainAgentContainer(name, repo, accessToken, sessionUuid) {
+  const containerName = `cc-remote-session-${name}`;
+  const volumeName = `cc-remote-workspace-${name}`;
+
+  const env = [
+    `GITHUB_TOKEN=${accessToken}`,
+    `GITHUB_REPO=${repo}`,
+    `GIT_USER_NAME=${GIT_USER_NAME}`,
+    `GIT_USER_EMAIL=${GIT_USER_EMAIL}`,
+    `PUID=${PUID}`,
+    `PGID=${PGID}`,
+    `HOME=/home/node`,
+    `SESSION_NAME=${name}`,
+    `SESSION_UUID=${sessionUuid}`,
+    `PERMISSION_MODE=${PERMISSION_MODE}`
+  ];
+
+  const hostConfig = {
+    Binds: [
+      `${volumeName}:/workspace`,
+      `${CLAUDE_CONFIG_PATH}:/home/node/.claude`,
+      `${CLAUDE_JSON_PATH}:/home/node/.claude.json`
+    ],
+    RestartPolicy: { Name: 'unless-stopped' },
+    SecurityOpt: ['no-new-privileges:true'],
+    PidsLimit: parseInt(process.env.AGENT_PIDS_LIMIT, 10) || 4096
+  };
+
+  const memoryLimit = parseInt(process.env.AGENT_MEMORY_LIMIT, 10);
+  if (Number.isInteger(memoryLimit) && memoryLimit > 0) {
+    hostConfig.Memory = memoryLimit;
+  }
+
+  console.log(`Creating main agent container: ${containerName}`);
+  const container = await docker.createContainer({
+    Image: AGENT_IMAGE,
+    name: containerName,
+    Tty: true,
+    OpenStdin: true,
+    Env: env,
+    Labels: {
+      'cc-remote-session': 'true',
+      'cc-remote-session-name': name,
+      'cc-remote-repo': repo
+    },
+    HostConfig: hostConfig
+  });
+
+  console.log(`Starting main agent container: ${containerName}`);
+  await container.start();
+}
+
+// Dynamic Agent Cloning Helper (runs asynchronous clone)
+async function startSessionCloning(name, repo, accessToken, sessionUuid, runMainAfterClone = true) {
+  const volumeName = `cc-remote-workspace-${name}`;
+  const cloneContainerName = `cc-remote-session-clone-${name}`;
+
+  const env = [
+    `GITHUB_TOKEN=${accessToken}`,
+    `GITHUB_REPO=${repo}`,
+    `PUID=${PUID}`,
+    `PGID=${PGID}`
+  ];
+
+  console.log(`Creating helper clone container: ${cloneContainerName}`);
+  const helperContainer = await docker.createContainer({
+    Image: AGENT_IMAGE,
+    name: cloneContainerName,
+    Env: env,
+    WorkingDir: '/workspace',
+    Cmd: ['sh', '-c', 'git clone "https://x-access-token:$GITHUB_TOKEN@github.com/$GITHUB_REPO.git" . && chown -R $PUID:$PGID .'],
+    Labels: {
+      'cc-remote-session': 'true',
+      'cc-remote-session-name': name,
+      'cc-remote-repo': repo,
+      'cc-remote-cloning': 'true'
+    },
+    HostConfig: {
+      Binds: [`${volumeName}:/workspace`],
+      SecurityOpt: ['no-new-privileges:true']
+    }
+  });
+
+  console.log(`Starting helper clone container: ${cloneContainerName}`);
+  await helperContainer.start();
+
+  // Asynchronously wait for the helper container to finish
+  (async () => {
+    try {
+      const waitResult = await helperContainer.wait();
+      const exitCode = waitResult.StatusCode;
+      if (exitCode === 0) {
+        console.log(`[Success] Clone container for session ${name} finished successfully.`);
+        await helperContainer.remove();
+        if (runMainAfterClone) {
+          await createMainAgentContainer(name, repo, accessToken, sessionUuid);
+        }
+      } else {
+        console.error(`[Error] Clone container for session ${name} failed with exit status ${exitCode}. Leaving container for log inspection.`);
+      }
+    } catch (err) {
+      console.error(`[Error] Background cloning operation failed for session ${name}:`, err);
+    }
+  })();
+}
 
 // Create Session Container + Volume
 app.post('/api/sessions', requireAuth, async (req, res) => {
@@ -447,6 +585,7 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
   }
 
   const containerName = `cc-remote-session-${name}`;
+  const cloneContainerName = `cc-remote-session-clone-${name}`;
   const volumeName = `cc-remote-workspace-${name}`;
 
   if (!CLAUDE_CONFIG_PATH || !CLAUDE_JSON_PATH) {
@@ -456,7 +595,9 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
   try {
     // 1. Check if container already exists
     const containers = await docker.listContainers({ all: true });
-    const existing = containers.find(c => c.Names.includes(`/${containerName}`));
+    const existing = containers.find(c => 
+      c.Names.includes(`/${containerName}`) || c.Names.includes(`/${cloneContainerName}`)
+    );
     if (existing) {
       return res.status(409).json({ error: `Session with name "${name}" already exists.` });
     }
@@ -468,58 +609,10 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
     // Generate a unique session UUID so Claude Code starts with a clean slate
     const sessionUuid = crypto.randomUUID();
 
-    // 3. Set environment variables (injecting OAuth token as GITHUB_TOKEN)
-    const env = [
-      `GITHUB_TOKEN=${accessToken}`,
-      `GITHUB_REPO=${repo}`,
-      `GIT_USER_NAME=${GIT_USER_NAME}`,
-      `GIT_USER_EMAIL=${GIT_USER_EMAIL}`,
-      `PUID=${PUID}`,
-      `PGID=${PGID}`,
-      `HOME=/home/node`,
-      `SESSION_NAME=${name}`,
-      `SESSION_UUID=${sessionUuid}`,
-      `PERMISSION_MODE=${PERMISSION_MODE}`
-    ];
+    // 3. Start cloning process asynchronously via helper container
+    await startSessionCloning(name, repo, accessToken, sessionUuid, true);
 
-    // 4. Harden the container's HostConfig
-    const hostConfig = {
-      Binds: [
-        `${volumeName}:/workspace`,
-        `${CLAUDE_CONFIG_PATH}:/home/node/.claude`,
-        `${CLAUDE_JSON_PATH}:/home/node/.claude.json`
-      ],
-      RestartPolicy: { Name: 'unless-stopped' },
-      SecurityOpt: ['no-new-privileges:true'],
-      PidsLimit: parseInt(process.env.AGENT_PIDS_LIMIT, 10) || 4096
-    };
-
-    const memoryLimit = parseInt(process.env.AGENT_MEMORY_LIMIT, 10);
-    if (Number.isInteger(memoryLimit) && memoryLimit > 0) {
-      hostConfig.Memory = memoryLimit;
-    }
-
-    // 5. Create the container
-    console.log(`Creating container: ${containerName}`);
-    const container = await docker.createContainer({
-      Image: AGENT_IMAGE,
-      name: containerName,
-      Tty: true,
-      OpenStdin: true,
-      Env: env,
-      Labels: {
-        'cc-remote-session': 'true',
-        'cc-remote-session-name': name,
-        'cc-remote-repo': repo
-      },
-      HostConfig: hostConfig
-    });
-
-    // 6. Start the container
-    console.log(`Starting container: ${containerName}`);
-    await container.start();
-
-    return res.json({ success: true, message: `Session ${name} created and started.` });
+    return res.json({ success: true, message: `Session ${name} created. Clone operation started.` });
   } catch (err) {
     return sendDockerError(res, err, 'Docker operations failed');
   }
@@ -610,14 +703,12 @@ app.post('/api/sessions/:name/delete', requireAuth, async (req, res) => {
 // Reset Session (recreates volume and container with fresh SESSION_UUID)
 app.post('/api/sessions/:name/reset', requireAuth, async (req, res) => {
   const { name } = req.params;
-  const { running } = req.body;
   const accessToken = req.user.accessToken;
 
   if (!NAME_REGEX.test(name)) {
     return res.status(400).json({ error: 'Invalid session name.' });
   }
 
-  const containerName = `cc-remote-session-${name}`;
   const volumeName = `cc-remote-workspace-${name}`;
 
   try {
@@ -632,7 +723,7 @@ app.post('/api/sessions/:name/reset', requireAuth, async (req, res) => {
       const info = await container.inspect();
       repo = info.Config.Labels['cc-remote-repo'];
     } catch (err) {
-      console.error(`Failed to inspect container ${containerName} for reset:`, err);
+      console.error(`Failed to inspect container for reset:`, err);
     }
 
     if (!repo) {
@@ -643,7 +734,7 @@ app.post('/api/sessions/:name/reset', requireAuth, async (req, res) => {
     try {
       const info = await container.inspect();
       if (info.State.Running) {
-        console.log(`Stopping container ${containerName} before reset...`);
+        console.log(`Stopping container ${container.id} before reset...`);
         await container.stop();
       }
     } catch (e) {
@@ -651,7 +742,7 @@ app.post('/api/sessions/:name/reset', requireAuth, async (req, res) => {
     }
 
     // 3. Remove container
-    console.log(`Removing container ${containerName}...`);
+    console.log(`Removing container ${container.id}...`);
     await container.remove();
 
     // 4. Remove workspace volume
@@ -670,60 +761,10 @@ app.post('/api/sessions/:name/reset', requireAuth, async (req, res) => {
     // 6. Generate fresh session UUID
     const sessionUuid = crypto.randomUUID();
 
-    // 7. Set environment variables
-    const env = [
-      `GITHUB_TOKEN=${accessToken}`,
-      `GITHUB_REPO=${repo}`,
-      `GIT_USER_NAME=${GIT_USER_NAME}`,
-      `GIT_USER_EMAIL=${GIT_USER_EMAIL}`,
-      `PUID=${PUID}`,
-      `PGID=${PGID}`,
-      `HOME=/home/node`,
-      `SESSION_NAME=${name}`,
-      `SESSION_UUID=${sessionUuid}`,
-      `PERMISSION_MODE=${PERMISSION_MODE}`
-    ];
+    // 7. Start cloning process asynchronously via helper container
+    await startSessionCloning(name, repo, accessToken, sessionUuid, true);
 
-    // 8. Setup HostConfig
-    const hostConfig = {
-      Binds: [
-        `${volumeName}:/workspace`,
-        `${CLAUDE_CONFIG_PATH}:/home/node/.claude`,
-        `${CLAUDE_JSON_PATH}:/home/node/.claude.json`
-      ],
-      RestartPolicy: { Name: 'unless-stopped' },
-      SecurityOpt: ['no-new-privileges:true'],
-      PidsLimit: parseInt(process.env.AGENT_PIDS_LIMIT, 10) || 4096
-    };
-
-    const memoryLimit = parseInt(process.env.AGENT_MEMORY_LIMIT, 10);
-    if (Number.isInteger(memoryLimit) && memoryLimit > 0) {
-      hostConfig.Memory = memoryLimit;
-    }
-
-    // 9. Create container
-    console.log(`Recreating container: ${containerName}`);
-    const newContainer = await docker.createContainer({
-      Image: AGENT_IMAGE,
-      name: containerName,
-      Tty: true,
-      OpenStdin: true,
-      Env: env,
-      Labels: {
-        'cc-remote-session': 'true',
-        'cc-remote-session-name': name,
-        'cc-remote-repo': repo
-      },
-      HostConfig: hostConfig
-    });
-
-    // 10. Start the container if it was running previously
-    if (running) {
-      console.log(`Starting recreated container: ${containerName}`);
-      await newContainer.start();
-    }
-
-    res.json({ success: true, message: `Session ${name} successfully reset.` });
+    res.json({ success: true, message: `Session ${name} successfully reset. Clone operation started.` });
   } catch (err) {
     sendDockerError(res, err, `Failed to reset session ${name}`);
   }
