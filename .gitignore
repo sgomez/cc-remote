@@ -10,7 +10,6 @@ workspace/
 # Logs & temp files
 *.log
 .npm/
-tmp-skills/
 
 # OS files
 .DS_Store

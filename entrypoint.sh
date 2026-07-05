@@ -24,9 +24,6 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p /home/node/.local/bin
     ln -sf /usr/local/bin/claude /home/node/.local/bin/claude
     chown -R node:node /home/node 2>/dev/null
-    if [ -d "/tmp-skills" ]; then
-        chown -R node:node /tmp-skills 2>/dev/null
-    fi
     
     # Re-execute this script as the node user with corrected HOME environment variable
     echo " [Info] Dropping privileges to node user..."

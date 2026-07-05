@@ -47,11 +47,6 @@ if [ $? -eq 0 ] && [ -f .env ]; then
     mkdir -p "$(dirname "$CLAUDE_JSON_PATH")"
     echo "{}" > "$CLAUDE_JSON_PATH"
   fi
-
-  if [ ! -d "tmp-skills" ]; then
-    echo -e " [Info] Creating skills temp directory: ${BLUE}tmp-skills${NC}"
-    mkdir -p "tmp-skills"
-  fi
   
   # Prompt to run container
   echo ""

@@ -11,7 +11,7 @@ This project provides a fully configurable Docker setup to run [Claude Code](htt
 - **Automatic HTTPS reverse proxy:** Includes Caddy to automatically provision Let's Encrypt SSL certificates and proxy incoming traffic on ports 80/443 directly to the web portal.
 - **Sandboxed Workspaces (Volumes):** Each session is allocated an isolated Docker volume for its workspace, cloned automatically from GitHub on startup. Deleting a session gives you the option to wipe the volume to conserve space.
 - **VPS-Ready:** Easily host your Claude Code agent on any Linux VPS.
-- **Secure GitHub Auth:** Uses a GitHub Personal Access Token to authenticate all git clone/push/pull commands without exposing SSH keys inside the container.
+- **Secure GitHub Auth:** Uses the dynamically obtained GitHub OAuth token to authenticate git clone/push/pull commands transparently, avoiding exposing SSH keys inside the container.
 - **Dockerized Sandbox:** Runs in an isolated Docker container with essential tools (`git`, `curl`, `gh` CLI).
 - **Auto Mode Integration:** Configured to run in Claude's Auto Mode (`--permission-mode auto`) by default, utilizing an AI safety classifier to auto-approve safe tasks and eliminate prompt fatigue.
 
@@ -35,7 +35,6 @@ Ensure the following tools are installed and configured on your VPS host machine
     - **Homepage URL**: `https://<your-vps-domain>` (or `http://localhost:4000` for local test)
     - **Authorization callback URL**: `https://<your-vps-domain>/api/auth/github/callback` (or `http://localhost:4000/api/auth/github/callback` for local test)
   - Copy the generated **Client ID** and **Client Secret** keys to use during the configuration wizard.
-- A **GitHub Personal Access Token (PAT)** (optional fallback for non-OAuth listings/manual overrides).
 
 ---
 
@@ -96,14 +95,17 @@ Run the interactive setup script:
 This script runs the interactive setup wizard (`config.js`) inside a temporary Node Docker container to query your VPS settings, validate paths, generate a schema-validated **`config.json`**, and compile the **`.env`** file automatically.
 
 During setup, you will be prompted for:
-- Your **GitHub Personal Access Token** (Optional fallback to set name/email).
-- Your **VPS Domain Name** (e.g., `cc.example.com`).
+- Whether to enable the **Caddy** reverse proxy.
+- Your **VPS Domain Name** (e.g., `cc.example.com` or `localhost:4000`).
+- The **Caddy HTTP and HTTPS ports** (if Caddy is enabled, HTTP can be disabled with port `0`).
 - Your **GitHub OAuth Client ID**.
 - Your **GitHub OAuth Client Secret**.
 - Whitelisted GitHub usernames (`ALLOWED_GITHUB_USERS`, comma-separated) allowed to access the system (e.g. `sgomez`).
+
+Note that:
 - The script automatically outputs a link and a step-by-step console guide to register the GitHub OAuth Application correctly based on the domain you enter.
 - Paths for the project directory, Claude configuration directory (`~/.claude`), and session credentials file (`~/.claude.json`) are resolved automatically.
-- Whether to enable the **Caddy** reverse proxy, and specify custom HTTP/HTTPS port mappings (HTTP can be disabled with port `0`).
+- Git identity (name and email) is automatically resolved from your host's global Git settings or falls back to defaults.
 
 ### 3. Run the Container
 
@@ -161,7 +163,8 @@ To avoid heavy nesting, performance hits, and security vulnerabilities associate
 | **Stop container** | `docker compose down` |
 | **View logs** | `docker compose logs -f` |
 | **Rebuild container** | `docker compose build --no-cache` |
-| **Open container terminal** | `docker compose exec claude-agent bash` |
+| **Open container terminal (web session)** | `docker exec -it cc-remote-session-<session_name> bash` |
+| **Open container terminal (manual run)** | `docker compose --profile agent exec claude-agent bash` |
 
 ---
 
