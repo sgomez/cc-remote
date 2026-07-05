@@ -465,6 +465,9 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
     console.log(`Creating Docker workspace volume: ${volumeName}`);
     await docker.createVolume({ Name: volumeName });
 
+    // Generate a unique session UUID so Claude Code starts with a clean slate
+    const sessionUuid = crypto.randomUUID();
+
     // 3. Set environment variables (injecting OAuth token as GITHUB_TOKEN)
     const env = [
       `GITHUB_TOKEN=${accessToken}`,
@@ -475,6 +478,7 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
       `PGID=${PGID}`,
       `HOME=/home/node`,
       `SESSION_NAME=${name}`,
+      `SESSION_UUID=${sessionUuid}`,
       `PERMISSION_MODE=${PERMISSION_MODE}`
     ];
 
@@ -560,7 +564,6 @@ app.post('/api/sessions/:name/stop', requireAuth, async (req, res) => {
 // Delete Session
 app.post('/api/sessions/:name/delete', requireAuth, async (req, res) => {
   const { name } = req.params;
-  const { deleteVolume } = req.body;
   const containerName = `cc-remote-session-${name}`;
   const volumeName = `cc-remote-workspace-${name}`;
 
@@ -589,20 +592,140 @@ app.post('/api/sessions/:name/delete', requireAuth, async (req, res) => {
     console.log(`Removing container ${containerName}...`);
     await container.remove();
 
-    // Optionally delete volume
-    if (deleteVolume) {
-      console.log(`Removing workspace volume ${volumeName}...`);
-      try {
-        const volume = docker.getVolume(volumeName);
-        await volume.remove();
-      } catch (volErr) {
-        console.error(`Failed to remove volume ${volumeName}:`, volErr);
-      }
+    // Always delete volume
+    console.log(`Removing workspace volume ${volumeName}...`);
+    try {
+      const volume = docker.getVolume(volumeName);
+      await volume.remove();
+    } catch (volErr) {
+      console.error(`Failed to remove volume ${volumeName}:`, volErr);
     }
 
     res.json({ success: true });
   } catch (err) {
     sendDockerError(res, err, `Failed to delete session ${name}`);
+  }
+});
+
+// Reset Session (recreates volume and container with fresh SESSION_UUID)
+app.post('/api/sessions/:name/reset', requireAuth, async (req, res) => {
+  const { name } = req.params;
+  const { running } = req.body;
+  const accessToken = req.user.accessToken;
+
+  if (!NAME_REGEX.test(name)) {
+    return res.status(400).json({ error: 'Invalid session name.' });
+  }
+
+  const containerName = `cc-remote-session-${name}`;
+  const volumeName = `cc-remote-workspace-${name}`;
+
+  try {
+    const container = await getSessionContainer(name);
+    if (!container) {
+      return res.status(404).json({ error: 'Session not found.' });
+    }
+
+    // 1. Get container configuration to find the repository label
+    let repo = null;
+    try {
+      const info = await container.inspect();
+      repo = info.Config.Labels['cc-remote-repo'];
+    } catch (err) {
+      console.error(`Failed to inspect container ${containerName} for reset:`, err);
+    }
+
+    if (!repo) {
+      return res.status(400).json({ error: 'Could not resolve repository label from container.' });
+    }
+
+    // 2. Stop container if it is running
+    try {
+      const info = await container.inspect();
+      if (info.State.Running) {
+        console.log(`Stopping container ${containerName} before reset...`);
+        await container.stop();
+      }
+    } catch (e) {
+      // Ignore stop errors if already stopped or not inspectable
+    }
+
+    // 3. Remove container
+    console.log(`Removing container ${containerName}...`);
+    await container.remove();
+
+    // 4. Remove workspace volume
+    console.log(`Removing workspace volume ${volumeName}...`);
+    try {
+      const volume = docker.getVolume(volumeName);
+      await volume.remove();
+    } catch (volErr) {
+      console.error(`Failed to remove volume ${volumeName} during reset:`, volErr);
+    }
+
+    // 5. Recreate volume
+    console.log(`Recreating Docker workspace volume: ${volumeName}`);
+    await docker.createVolume({ Name: volumeName });
+
+    // 6. Generate fresh session UUID
+    const sessionUuid = crypto.randomUUID();
+
+    // 7. Set environment variables
+    const env = [
+      `GITHUB_TOKEN=${accessToken}`,
+      `GITHUB_REPO=${repo}`,
+      `GIT_USER_NAME=${GIT_USER_NAME}`,
+      `GIT_USER_EMAIL=${GIT_USER_EMAIL}`,
+      `PUID=${PUID}`,
+      `PGID=${PGID}`,
+      `HOME=/home/node`,
+      `SESSION_NAME=${name}`,
+      `SESSION_UUID=${sessionUuid}`,
+      `PERMISSION_MODE=${PERMISSION_MODE}`
+    ];
+
+    // 8. Setup HostConfig
+    const hostConfig = {
+      Binds: [
+        `${volumeName}:/workspace`,
+        `${CLAUDE_CONFIG_PATH}:/home/node/.claude`,
+        `${CLAUDE_JSON_PATH}:/home/node/.claude.json`
+      ],
+      RestartPolicy: { Name: 'unless-stopped' },
+      SecurityOpt: ['no-new-privileges:true'],
+      PidsLimit: parseInt(process.env.AGENT_PIDS_LIMIT, 10) || 4096
+    };
+
+    const memoryLimit = parseInt(process.env.AGENT_MEMORY_LIMIT, 10);
+    if (Number.isInteger(memoryLimit) && memoryLimit > 0) {
+      hostConfig.Memory = memoryLimit;
+    }
+
+    // 9. Create container
+    console.log(`Recreating container: ${containerName}`);
+    const newContainer = await docker.createContainer({
+      Image: AGENT_IMAGE,
+      name: containerName,
+      Tty: true,
+      OpenStdin: true,
+      Env: env,
+      Labels: {
+        'cc-remote-session': 'true',
+        'cc-remote-session-name': name,
+        'cc-remote-repo': repo
+      },
+      HostConfig: hostConfig
+    });
+
+    // 10. Start the container if it was running previously
+    if (running) {
+      console.log(`Starting recreated container: ${containerName}`);
+      await newContainer.start();
+    }
+
+    res.json({ success: true, message: `Session ${name} successfully reset.` });
+  } catch (err) {
+    sendDockerError(res, err, `Failed to reset session ${name}`);
   }
 });
 

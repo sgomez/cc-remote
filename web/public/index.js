@@ -42,11 +42,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Modal: Confirm Delete
   const deleteModal = document.getElementById('delete-modal');
   const deleteSessionDisplay = document.getElementById('delete-session-display');
-  const deleteVolumeCheckbox = document.getElementById('delete-volume-checkbox');
-  const deleteConfirmInput = document.getElementById('delete-confirm-input');
-  const deleteConfirmNameLabel = document.getElementById('delete-confirm-name-label');
   const deleteError = document.getElementById('delete-error');
   const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+
+  // Modal: Confirm Reset
+  const resetModal = document.getElementById('reset-modal');
+  const resetSessionDisplay = document.getElementById('reset-session-display');
+  const resetError = document.getElementById('reset-error');
+  const btnConfirmReset = document.getElementById('btn-confirm-reset');
+
+  // Modal: Clone Session
+  const cloneModal = document.getElementById('clone-modal');
+  const cloneForm = document.getElementById('clone-session-form');
+  const cloneNameInput = document.getElementById('clone-name-input');
+  const cloneRepoDisplay = document.getElementById('clone-repo-display');
+  const cloneError = document.getElementById('clone-error');
+  const btnSubmitClone = document.getElementById('btn-submit-clone');
 
   // Modal: View Logs
   const logsModal = document.getElementById('logs-modal');
@@ -56,6 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // State
   let activeDeleteSessionName = null;
+  let activeResetSessionName = null;
+  let activeResetSessionRunning = false;
+  let activeCloneSessionName = null;
+  let activeCloneRepo = null;
   let activeLogsSessionName = null;
   let isManualRepoActive = false;
   let repositories = [];
@@ -192,11 +207,33 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="text-muted" style="font-size: 0.8rem;">Created: ${new Date(session.created * 1000).toLocaleDateString()}</span>
             <div class="session-actions">
               ${isRunning ?
-                `<button class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>` :
-                `<button class="btn btn-primary btn-sm btn-start" data-name="${safeName}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`
+                `<button type="button" class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>` :
+                `<button type="button" class="btn btn-primary btn-sm btn-start" data-name="${safeName}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`
               }
-              <button class="btn btn-secondary btn-sm btn-logs" data-name="${safeName}"><i data-lucide="scroll" style="width: 14px; height: 14px;"></i> Logs</button>
-              <button class="btn btn-danger btn-sm btn-delete" data-name="${safeName}" ${isRunning ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Stop the container before deleting."' : ''}><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete</button>
+              <div class="dropdown">
+                <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-name="${safeName}">
+                  <span>Actions</span>
+                  <i data-lucide="chevron-down" style="width: 12px; height: 12px; margin-left: 2px;"></i>
+                </button>
+                <div class="dropdown-menu">
+                  <button type="button" class="dropdown-item btn-logs" data-name="${safeName}">
+                    <i data-lucide="scroll"></i>
+                    <span>Logs</span>
+                  </button>
+                  <button type="button" class="dropdown-item btn-clone" data-name="${safeName}" data-repo="${safeRepo}">
+                    <i data-lucide="copy"></i>
+                    <span>Clone</span>
+                  </button>
+                  <button type="button" class="dropdown-item btn-reset text-warning" data-name="${safeName}" data-running="${isRunning}">
+                    <i data-lucide="rotate-ccw"></i>
+                    <span>Reset</span>
+                  </button>
+                  <button type="button" class="dropdown-item btn-delete text-danger" data-name="${safeName}" ${isRunning ? 'disabled title="Stop the container before deleting."' : ''}>
+                    <i data-lucide="trash-2"></i>
+                    <span>Delete</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         `;
@@ -225,6 +262,20 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.btn-logs').forEach(btn => {
         btn.addEventListener('click', () => openLogsModal(btn.dataset.name));
       });
+      document.querySelectorAll('.btn-reset').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const name = btn.dataset.name;
+          const running = btn.dataset.running === 'true';
+          openResetModal(name, running);
+        });
+      });
+      document.querySelectorAll('.btn-clone').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const name = btn.dataset.name;
+          const repo = btn.dataset.repo;
+          openCloneModal(name, repo);
+        });
+      });
 
     } catch (err) {
       console.error(err);
@@ -252,9 +303,12 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       createModal.classList.add('hidden');
       deleteModal.classList.add('hidden');
+      resetModal.classList.add('hidden');
+      cloneModal.classList.add('hidden');
       logsModal.classList.add('hidden');
-      deleteConfirmInput.value = '';
       activeLogsSessionName = null;
+      activeResetSessionName = null;
+      activeCloneSessionName = null;
     });
   });
 
@@ -461,34 +515,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function openDeleteModal(name) {
     activeDeleteSessionName = name;
     deleteSessionDisplay.textContent = name;
-    deleteConfirmNameLabel.textContent = name;
-    deleteConfirmInput.value = '';
-    deleteVolumeCheckbox.checked = false;
-    btnConfirmDelete.setAttribute('disabled', 'disabled');
-    btnConfirmDelete.style.opacity = '0.5';
-    btnConfirmDelete.style.cursor = 'not-allowed';
     deleteError.classList.add('hidden');
     deleteModal.classList.remove('hidden');
   }
 
-  deleteConfirmInput.addEventListener('input', (e) => {
-    if (e.target.value.trim() === activeDeleteSessionName) {
-      btnConfirmDelete.removeAttribute('disabled');
-      btnConfirmDelete.style.opacity = '1';
-      btnConfirmDelete.style.cursor = 'pointer';
-    } else {
-      btnConfirmDelete.setAttribute('disabled', 'disabled');
-      btnConfirmDelete.style.opacity = '0.5';
-      btnConfirmDelete.style.cursor = 'not-allowed';
-    }
-  });
-
   btnConfirmDelete.addEventListener('click', async () => {
     if (!activeDeleteSessionName) return;
-    if (deleteConfirmInput.value.trim() !== activeDeleteSessionName) return;
 
     deleteError.classList.add('hidden');
-    const deleteVolume = deleteVolumeCheckbox.checked;
 
     // Toggle loader
     const btnText = btnConfirmDelete.querySelector('span');
@@ -500,13 +534,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/sessions/${activeDeleteSessionName}/delete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteVolume })
+        headers: { 'Content-Type': 'application/json' }
       });
       
       if (res.ok) {
         deleteModal.classList.add('hidden');
-        deleteConfirmInput.value = '';
         loadSessions();
       } else {
         const data = await res.json();
@@ -523,9 +555,122 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // --- Reset Session Modal ---
+  function openResetModal(name, isRunning) {
+    activeResetSessionName = name;
+    activeResetSessionRunning = isRunning;
+    resetSessionDisplay.textContent = name;
+    resetError.classList.add('hidden');
+    resetModal.classList.remove('hidden');
+  }
+
+  btnConfirmReset.addEventListener('click', async () => {
+    if (!activeResetSessionName) return;
+
+    resetError.classList.add('hidden');
+    const btnText = btnConfirmReset.querySelector('span');
+    const btnSpinner = btnConfirmReset.querySelector('.spin');
+    btnText.classList.add('hidden');
+    btnSpinner.classList.remove('hidden');
+    btnConfirmReset.setAttribute('disabled', 'disabled');
+
+    try {
+      const res = await fetch(`/api/sessions/${activeResetSessionName}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ running: activeResetSessionRunning })
+      });
+
+      if (res.ok) {
+        resetModal.classList.add('hidden');
+        loadSessions();
+      } else {
+        const data = await res.json();
+        showError(resetError, data.error || 'Failed to reset session.');
+      }
+    } catch (err) {
+      showError(resetError, 'Network error. Failed to reach server.');
+    } finally {
+      btnText.classList.remove('hidden');
+      btnSpinner.classList.add('hidden');
+      btnConfirmReset.removeAttribute('disabled');
+      activeResetSessionName = null;
+    }
+  });
+
+  // --- Clone Session Modal ---
+  function openCloneModal(name, repo) {
+    activeCloneSessionName = name;
+    activeCloneRepo = repo;
+    
+    // Fill the clone modal with default name using current timestamp in seconds
+    const timestamp = Math.floor(Date.now() / 1000);
+    cloneNameInput.value = `${name}-clone-${timestamp}`;
+    cloneRepoDisplay.value = repo;
+    cloneError.classList.add('hidden');
+    cloneModal.classList.remove('hidden');
+  }
+
+  cloneForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!activeCloneSessionName || !activeCloneRepo) return;
+
+    const newName = cloneNameInput.value.trim();
+    if (!newName) return;
+
+    cloneError.classList.add('hidden');
+    const btnText = btnSubmitClone.querySelector('span');
+    const btnSpinner = btnSubmitClone.querySelector('.spin');
+    btnText.classList.add('hidden');
+    btnSpinner.classList.remove('hidden');
+    btnSubmitClone.setAttribute('disabled', 'disabled');
+
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, repo: activeCloneRepo })
+      });
+
+      if (res.ok) {
+        cloneModal.classList.add('hidden');
+        loadSessions();
+      } else {
+        const data = await res.json();
+        showError(cloneError, data.error || 'Failed to clone session.');
+      }
+    } catch (err) {
+      showError(cloneError, 'Network error. Failed to reach server.');
+    } finally {
+      btnText.classList.remove('hidden');
+      btnSpinner.classList.add('hidden');
+      btnSubmitClone.removeAttribute('disabled');
+      activeCloneSessionName = null;
+      activeCloneRepo = null;
+    }
+  });
+
   // --- Helper: Display Error ---
   function showError(element, message) {
     element.querySelector('.error-msg').textContent = message;
     element.classList.remove('hidden');
   }
+
+  // --- Global Dropdown Logic ---
+  document.addEventListener('click', (e) => {
+    const isDropdownToggle = e.target.closest('.dropdown-toggle');
+    if (!isDropdownToggle) {
+      document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('show'));
+      return;
+    }
+
+    const currentMenu = isDropdownToggle.nextElementSibling;
+    document.querySelectorAll('.dropdown-menu').forEach(menu => {
+      if (menu !== currentMenu) {
+        menu.classList.remove('show');
+      }
+    });
+
+    currentMenu.classList.toggle('show');
+  });
 });

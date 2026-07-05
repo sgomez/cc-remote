@@ -844,3 +844,125 @@ select.form-control {
   font-size: 0.85rem;
   margin: 0;
 }
+
+.text-warning {
+  color: #f59e0b !important;
+}
+
+.btn-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fde047;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.btn-warning:hover {
+  background: #f59e0b;
+  color: #000;
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);
+}
+
+.alert-warning-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 15px;
+  margin-top: 15px;
+  color: var(--text-color);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.alert-warning-box i,
+.alert-warning-box svg {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  stroke-width: 2px;
+}
+
+/* Card Dropdown Menu */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 8px;
+  z-index: 100;
+  min-width: 150px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 6px 0;
+  display: none;
+}
+
+.dropdown-menu.show {
+  display: block;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: var(--text-color);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dropdown-item i,
+.dropdown-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.dropdown-item.text-warning {
+  color: #fde047 !important;
+}
+
+.dropdown-item.text-warning:hover {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.dropdown-item.text-danger {
+  color: #fca5a5 !important;
+}
+
+.dropdown-item.text-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.dropdown-item[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+}
+
+.dropdown-item[disabled]:hover {
+  background: none;
+}
+
+.btn-secondary.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
