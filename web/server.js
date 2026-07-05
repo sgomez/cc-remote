@@ -535,6 +535,7 @@ async function startSessionCloning(name, repo, accessToken, sessionUuid, runMain
     name: cloneContainerName,
     Env: env,
     WorkingDir: '/workspace',
+    Entrypoint: [],
     Cmd: ['sh', '-c', 'git clone "https://x-access-token:$GITHUB_TOKEN@github.com/$GITHUB_REPO.git" . && chown -R $PUID:$PGID .'],
     Labels: {
       'cc-remote-session': 'true',
