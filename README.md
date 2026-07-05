@@ -2,7 +2,10 @@
 
 This project provides a fully configurable Docker setup to run [Claude Code](https://github.com/anthropics/claude-code) with **Remote Control** enabled on a Virtual Private Server (VPS). It includes transparent GitHub authentication, Git identity mapping, and automated session backups.
 
-![Claude Code Remote Session Manager](docs/portal.png)
+<p align="center">
+  <img src="docs/portal.png" alt="Claude Code Remote Session Manager" width="49%" />
+  <img src="docs/claude-code.png" alt="Claude Code Remote Interface" width="49%" />
+</p>
 
 ---
 
