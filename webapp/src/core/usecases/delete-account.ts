@@ -1,0 +1,37 @@
+// delete-account — refused while any Session is labelled with the Account
+// (Docker is the source of truth for that check); otherwise removes the row and
+// its Account Config Volume (#5: blocked, never cascade).
+
+import { accountConfigVolumeName, ownsConfigVolume } from "../domain/account";
+import { AccountInUseError, AccountNotFoundError } from "../domain/errors";
+import { requireProviderType } from "../domain/provider-type";
+import type { AccountRepository } from "../ports/account-repository";
+import type { ContainerEngine } from "../ports/container-engine";
+
+export type DeleteAccountInput = { accountId: string };
+
+export type DeleteAccountDeps = {
+  accounts: AccountRepository;
+  engine: ContainerEngine;
+};
+
+export function makeDeleteAccount(deps: DeleteAccountDeps) {
+  return async function deleteAccount(input: DeleteAccountInput): Promise<void> {
+    const account = await deps.accounts.findById(input.accountId);
+    if (!account) throw new AccountNotFoundError(input.accountId);
+
+    const containers = await deps.engine.listSessionContainers();
+    const usingSessions = [
+      ...new Set(containers.filter((c) => c.accountId === account.id).map((c) => c.name)),
+    ];
+    if (usingSessions.length > 0) {
+      throw new AccountInUseError(account.id, usingSessions);
+    }
+
+    await deps.accounts.delete(account.id);
+
+    if (ownsConfigVolume(requireProviderType(account.providerType))) {
+      await deps.engine.removeVolume(accountConfigVolumeName(account.id));
+    }
+  };
+}
