@@ -58,7 +58,6 @@ describe("buildAnthropicEnv", () => {
   });
 
   it("yields no anthropic env for non api-key types", () => {
-    expect(buildAnthropicEnv(requireProviderType("claude-local"), account({}))).toEqual({});
     expect(buildAnthropicEnv(requireProviderType("claude"), account({}))).toEqual({});
   });
 });

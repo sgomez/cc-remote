@@ -1,8 +1,9 @@
 // Pure builders: (SessionContainerSpec | CloneContainerSpec | seed request) +
-// infra config -> dockerode ContainerCreateOptions. All the branching the
-// adapter does (config-volume vs host-mount, infra env merge, hardening flags)
-// lives here so it is unit-testable; docker-container-engine.ts just hands the
-// result to dockerode. No domain decisions — those already happened in core.
+// infra config -> dockerode ContainerCreateOptions. All the assembly the adapter
+// does (volume mounts, infra env merge, hardening flags) lives here so it is
+// unit-testable; docker-container-engine.ts just hands the result to dockerode.
+// No domain decisions — those already happened in core. Containers mount named
+// volumes only; no host path is ever bound in.
 
 import type Docker from "dockerode";
 import type { CloneContainerSpec, LoginContainerSpec, SessionContainerSpec } from "../../core";
@@ -10,8 +11,6 @@ import {
   ACCOUNT_CONFIG_DIR_ENV,
   ACCOUNT_CONFIG_MOUNT,
   type DockerAdapterConfig,
-  HOST_CLAUDE_DIR,
-  HOST_CLAUDE_JSON,
   WORKSPACE_MOUNT,
 } from "./config";
 import {
@@ -68,33 +67,20 @@ function baseHostConfig(config: DockerAdapterConfig, binds: string[]): Docker.Ho
 
 /**
  * Main agent container. Runs the image default entrypoint + CMD (ttyd web
- * console) — the terminal every Session gets. Mounts either the Account Config
- * Volume (api-key / oauth) at a staging path, or the host Claude config
- * (claude-local, host-mount) directly.
+ * console) — the terminal every Session gets. Mounts its workspace volume plus
+ * the Account Config Volume (staged at ACCOUNT_CONFIG_MOUNT, which entrypoint.sh
+ * symlinks ~/.claude(.json) into).
  */
 export function buildSessionCreateOptions(
   spec: SessionContainerSpec,
   config: DockerAdapterConfig,
 ): Docker.ContainerCreateOptions {
-  const binds = [`${spec.workspaceVolume}:${WORKSPACE_MOUNT}`];
-  const infra = infraEnv(config);
-
-  if (spec.accountConfigVolume) {
-    binds.push(`${spec.accountConfigVolume}:${ACCOUNT_CONFIG_MOUNT}`);
-    // Tell entrypoint.sh to link ~/.claude(.json) into the staged volume.
-    infra[ACCOUNT_CONFIG_DIR_ENV] = ACCOUNT_CONFIG_MOUNT;
-  } else {
-    // host-mount (claude-local): bind the host's onboarded config in place.
-    if (!config.hostClaudeConfigPath || !config.hostClaudeJsonPath) {
-      throw new Error(
-        `Session '${spec.sessionName}' needs a host-mount config but ` +
-          "CLAUDE_CONFIG_PATH / CLAUDE_JSON_PATH are not set. A deployment " +
-          "without them cannot run claude-local Sessions.",
-      );
-    }
-    binds.push(`${config.hostClaudeConfigPath}:${HOST_CLAUDE_DIR}`);
-    binds.push(`${config.hostClaudeJsonPath}:${HOST_CLAUDE_JSON}`);
-  }
+  const binds = [
+    `${spec.workspaceVolume}:${WORKSPACE_MOUNT}`,
+    `${spec.accountConfigVolume}:${ACCOUNT_CONFIG_MOUNT}`,
+  ];
+  // Tell entrypoint.sh to link ~/.claude(.json) into the staged volume.
+  const infra = { ...infraEnv(config), [ACCOUNT_CONFIG_DIR_ENV]: ACCOUNT_CONFIG_MOUNT };
 
   return {
     name: mainContainerName(spec.sessionName),

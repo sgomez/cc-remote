@@ -75,12 +75,14 @@ describe("delete-account", () => {
     expect(await accounts.findById("acc-1")).toBeNull();
   });
 
-  it("deletes a host-mount account row without touching any volume", async () => {
+  it("removes the config volume of an oauth account too", async () => {
     accounts = new FakeAccountRepository([
-      account({ id: "local", providerType: "claude-local", credentials: {} }),
+      account({ id: "oauth-1", providerType: "claude", credentials: {} }),
     ]);
+    engine.createVolume(accountConfigVolumeName("oauth-1"));
     del = makeDeleteAccount({ accounts, engine });
-    await del({ accountId: "local" });
-    expect(await accounts.findById("local")).toBeNull();
+    await del({ accountId: "oauth-1" });
+    expect(await accounts.findById("oauth-1")).toBeNull();
+    expect(engine.hasVolume(accountConfigVolumeName("oauth-1"))).toBe(false);
   });
 });

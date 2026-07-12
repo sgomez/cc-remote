@@ -22,8 +22,8 @@ export type AccountRow = {
 };
 
 export type AccountDetail = AccountRow & {
-  /** `cc-remote-account-<id>`, or null for host-mount (claude-local). */
-  configVolume: string | null;
+  /** `cc-remote-account-<id>` — every Account owns one. */
+  configVolume: string;
   config: Record<string, string>;
   sessions: SessionRow[];
 };

@@ -22,15 +22,6 @@ export class MissingAccountFieldError extends DomainError {
   }
 }
 
-export class SingletonAccountExistsError extends DomainError {
-  constructor(providerType: string) {
-    super(
-      "singleton_account_exists",
-      `A ${providerType} account already exists; this provider type is a singleton.`,
-    );
-  }
-}
-
 export class AccountNotFoundError extends DomainError {
   constructor(id: string) {
     super("account_not_found", `Account not found: ${id}`);

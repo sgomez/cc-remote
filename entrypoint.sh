@@ -20,11 +20,23 @@ if [ "$(id -u)" = "0" ]; then
         groupmod -g "$PGID" node 2>/dev/null || echo " [Warning] Could not change node user GID"
     fi
 
-    # Ensure /home/node and local bin paths are created and owned by the node user
+    # Ensure the local bin path exists and is owned by the node user. Scope this
+    # narrowly: a `chown -R /home/node` would recurse into whatever is mounted
+    # under HOME (the Account Config Volume), and walking a volume on every
+    # container start is pure latency. `usermod -u` above already re-owns the
+    # files in the home tree that belonged to the old uid.
     mkdir -p /home/node/.local/bin
     ln -sf /usr/local/bin/claude /home/node/.local/bin/claude
-    chown -R node:node /home/node 2>/dev/null
-    
+    chown -R node:node /home/node/.local 2>/dev/null
+    chown node:node /home/node 2>/dev/null
+
+    # A freshly created Docker volume is root-owned at its mount point, so the
+    # node user could not write into it. Fix just that one inode — never recurse:
+    # the volume's contents were already chowned when it was seeded.
+    if [ -n "$ACCOUNT_CONFIG_DIR" ] && [ -d "$ACCOUNT_CONFIG_DIR" ]; then
+        chown node:node "$ACCOUNT_CONFIG_DIR" 2>/dev/null
+    fi
+
     # Re-execute this script as the node user with corrected HOME environment variable
     echo " [Info] Dropping privileges to node user..."
     export HOME=/home/node
@@ -43,12 +55,11 @@ if [ -n "$GIT_USER_EMAIL" ]; then
     git config --global user.email "$GIT_USER_EMAIL"
 fi
 
-# Account Config Volume (api-key / oauth accounts): the whole volume is bind-mounted
-# at $ACCOUNT_CONFIG_DIR (see webapp src/adapters/docker), holding both the account's
-# .claude/ dir and .claude.json. Link ~/.claude and ~/.claude.json into it so writes
-# (e.g. OAuth credentials from a Login Container) persist to the volume and the seeded
-# wizard-skip .claude.json is picked up. claude-local (host-mount) leaves this unset and
-# bind-mounts the host config directly instead.
+# Account Config Volume: the whole volume is bind-mounted at $ACCOUNT_CONFIG_DIR (see
+# webapp src/adapters/docker), holding both the account's .claude/ dir and .claude.json.
+# Link ~/.claude and ~/.claude.json into it so writes (e.g. OAuth credentials from a
+# Login Container) persist to the volume and the seeded wizard-skip .claude.json is
+# picked up. Every Account owns one — no agent container ever mounts a host path.
 if [ -n "$ACCOUNT_CONFIG_DIR" ]; then
     echo " [Info] Linking Claude config to Account Config Volume at $ACCOUNT_CONFIG_DIR"
     mkdir -p "$ACCOUNT_CONFIG_DIR/.claude"

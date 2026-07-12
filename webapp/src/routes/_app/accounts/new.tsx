@@ -1,16 +1,15 @@
 // New-account two-step flow on one route (#16). Step 1 (?type absent) is the
-// catalogue type-picker — capability cards, with the claude-local singleton
-// disabled once one exists. Step 2 (?type=<id>) renders that type's form: the
-// account name plus the Provider Type's own fields, deepseek presets shown
-// read-only, and an OAuth notice for `claude`. The step change is a router
-// navigation, so it animates as a View Transition. On submit the register-account
-// use case runs server-side; oauth accounts land on their detail page (Login
-// Container), the rest on the accounts list.
+// catalogue type-picker — capability cards. Step 2 (?type=<id>) renders that
+// type's form: the account name plus the Provider Type's own fields, deepseek
+// presets shown read-only, and an OAuth notice for `claude`. The step change is
+// a router navigation, so it animates as a View Transition. On submit the
+// register-account use case runs server-side; oauth accounts land on their
+// detail page (Login Container), the rest on the accounts list.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { listProviderTypes, requireProviderType } from "~/core";
-import { listAccounts, registerAccount } from "~/server/accounts";
+import { registerAccount } from "~/server/accounts";
 import { Capability } from "~/ui/components/badges";
 import { accountFormComplete, accountFormSpec, catalogueCards } from "~/ui/view-models/catalogue";
 
@@ -18,7 +17,6 @@ export const Route = createFileRoute("/_app/accounts/new")({
   validateSearch: (search: Record<string, unknown>) => ({
     type: typeof search.type === "string" ? search.type : undefined,
   }),
-  loader: async () => ({ accounts: await listAccounts() }),
   component: NewAccountPage,
 });
 
@@ -50,9 +48,8 @@ function NewAccountPage() {
 }
 
 function TypePicker() {
-  const { accounts } = Route.useLoaderData();
   const router = useRouter();
-  const cards = catalogueCards(listProviderTypes(), accounts);
+  const cards = catalogueCards(listProviderTypes());
 
   return (
     <div className="type-grid">
@@ -61,16 +58,12 @@ function TypePicker() {
           type="button"
           key={c.id}
           className="type-card"
-          disabled={c.disabled}
           onClick={() => router.navigate({ to: "/accounts/new", search: { type: c.id } })}
         >
           <h3>{c.label}</h3>
           <div className="caps">
             <Capability on={c.remoteControl} label="remote control" />
             <span className="badge cap">seeding: {c.seedingLabel}</span>
-            {c.singleton && (
-              <span className="badge cap">{c.disabled ? c.disabledReason : "singleton"}</span>
-            )}
           </div>
         </button>
       ))}
@@ -112,14 +105,6 @@ function TypeForm({ typeId }: { typeId: string }) {
     <div className="panel" style={{ maxWidth: 560 }}>
       <h2>{type.label}</h2>
 
-      {spec.hostMount && (
-        <p className="subtle" style={{ marginBottom: 12 }}>
-          Attaches the host's <code className="inline">~/.claude</code> +{" "}
-          <code className="inline">~/.claude.json</code> as the singleton account — no credentials
-          to enter.
-        </p>
-      )}
-
       {spec.fields.map((f) => (
         <div className="field" key={f.name}>
           <label htmlFor={`field-${f.name}`}>{f.label}</label>
@@ -159,9 +144,7 @@ function TypeForm({ typeId }: { typeId: string }) {
             ? "Creating…"
             : spec.oauthNotice
               ? "Create & open login container"
-              : spec.hostMount
-                ? "Attach host config"
-                : "Create account"}
+              : "Create account"}
         </button>
         <Link to="/accounts/new" search={{ type: undefined }} className="btn">
           Change type

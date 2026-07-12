@@ -1,7 +1,7 @@
 // Infrastructure configuration for the Docker adapter. These are deployment
 // facts (from setup.sh / .env), NOT domain data: the agent image name, the
-// compose network the sibling containers join, host uid/gid, hardening limits,
-// and the optional host Claude config paths for claude-local (host-mount).
+// compose network the sibling containers join, host uid/gid, and hardening
+// limits. No host paths: agent containers mount named volumes only.
 
 /** Where inside every container the workspace volume is mounted. */
 export const WORKSPACE_MOUNT = "/workspace";
@@ -21,10 +21,6 @@ export const ACCOUNT_CONFIG_MOUNT = `${HOME_DIR}/.claude-config`;
 /** Env var read by entrypoint.sh to know it must link into a config volume. */
 export const ACCOUNT_CONFIG_DIR_ENV = "ACCOUNT_CONFIG_DIR";
 
-/** Host-mount targets for claude-local (unchanged from legacy). */
-export const HOST_CLAUDE_DIR = `${HOME_DIR}/.claude`;
-export const HOST_CLAUDE_JSON = `${HOME_DIR}/.claude.json`;
-
 export type DockerHost = { protocol: "http"; host: string; port: number } | { socketPath: string };
 
 export type DockerAdapterConfig = {
@@ -42,9 +38,6 @@ export type DockerAdapterConfig = {
   restartPolicy: string;
   gitUserName?: string;
   gitUserEmail?: string;
-  /** claude-local host bind sources; absent = deployment has no claude-local. */
-  hostClaudeConfigPath?: string;
-  hostClaudeJsonPath?: string;
 };
 
 /** Parse `tcp://host:port` (the socket-proxy form) or fall back to the raw socket. */
@@ -72,7 +65,5 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): DockerAdapt
     restartPolicy: env.AGENT_RESTART_POLICY || "unless-stopped",
     gitUserName: env.GIT_USER_NAME || undefined,
     gitUserEmail: env.GIT_USER_EMAIL || undefined,
-    hostClaudeConfigPath: env.CLAUDE_CONFIG_PATH || undefined,
-    hostClaudeJsonPath: env.CLAUDE_JSON_PATH || undefined,
   };
 }

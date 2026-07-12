@@ -62,7 +62,6 @@ function AccountsPage() {
                   {a.displayName}
                 </span>
                 <ProviderBadge providerType={a.providerType} />
-                {caps.singleton && <span className="badge cap">singleton</span>}
                 <span className="spacer" />
                 <span className="card-meta">
                   {a.sessionsInUse > 0

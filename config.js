@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 const readline = require('readline');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
@@ -35,19 +34,6 @@ const questionSecret = (query) => new Promise((resolve) => {
   isMuted = true;
 });
 
-// Path resolver
-function resolvePath(userPath) {
-  if (userPath.startsWith('~')) {
-    const hostHome = process.env.HOST_HOME || '/root';
-    return path.join(hostHome, userPath.slice(1));
-  }
-  if (!path.isAbsolute(userPath)) {
-    const hostPwd = process.env.HOST_PWD || '/app';
-    return path.join(hostPwd, userPath);
-  }
-  return userPath;
-}
-
 async function main() {
   let config = {};
   const configFile = 'config.json';
@@ -82,10 +68,8 @@ async function main() {
 
   // Reuse a previously generated better-auth signing secret if we have one, otherwise
   // generate a new one. Stable across restarts, or every restart invalidates all
-  // logged-in sessions. (`jwtSecret` fallback migrates configs written by earlier
-  // versions.)
-  const betterAuthSecret =
-    config.web?.betterAuthSecret || config.web?.jwtSecret || crypto.randomBytes(32).toString('hex');
+  // logged-in sessions.
+  const betterAuthSecret = config.web?.betterAuthSecret || crypto.randomBytes(32).toString('hex');
 
   console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
   
@@ -156,62 +140,22 @@ async function main() {
   const allowedUsersInput = await question(`Enter allowed GitHub usernames (comma-separated, e.g., sgomez, user2) [${defaultAllowedUsers}]: `);
   const allowedUsers = allowedUsersInput === '' ? defaultAllowedUsers : allowedUsersInput.trim();
 
-  // claude-local (host-mounted ~/.claude) is now OPTIONAL: a deployment may run with
-  // only API-key / OAuth Accounts and no host Claude config at all (PRD §3). Ask, and
-  // when disabled emit empty CLAUDE_*_PATH so nothing assumes the host config exists.
-  console.log('\n\x1b[35m--- claude-local (optional) ---\x1b[0m');
-  console.log('\x1b[36mEnable claude-local to mount the host ~/.claude into agent containers.');
-  console.log('Leave disabled to run API-key / OAuth Accounts only (created in the web UI).\x1b[0m');
-  const defaultClaudeLocal =
-    config.paths?.claudeLocal !== undefined
-      ? config.paths.claudeLocal
-      : !!(config.paths?.claudeConfig || config.paths?.claudeJson);
-  const claudeLocalInput = await question(
-    `Enable claude-local (mount host ~/.claude)? (y/N) [${defaultClaudeLocal ? 'y' : 'n'}]: `,
-  );
-  let claudeLocal = defaultClaudeLocal;
-  if (claudeLocalInput !== '') {
-    claudeLocal = ['y', 'yes'].includes(claudeLocalInput.toLowerCase().trim());
-  }
-
-  // Automatic Host & Core Resolutions
+  // Automatic Host & Core Resolutions. Everything below is derived or defaulted —
+  // no prompt. Sessions are created in the web UI (each one names itself, picks its
+  // repo and its Account, and gets its own workspace volume), so the wizard has no
+  // repo, session or host-path questions left to ask.
   const webPort = config.web?.port || '4000';
-  const githubRepo = config.github?.repo || '';
-  const projectPathRaw = config.paths?.workspace || './workspace';
-  const projectPath = resolvePath(projectPathRaw);
-  // Only meaningful (and only resolved) when claude-local is enabled.
-  const claudeConfigRaw = claudeLocal ? config.paths?.claudeConfig || '~/.claude' : '';
-  const claudeConfig = claudeLocal ? resolvePath(claudeConfigRaw) : '';
-  const claudeJsonRaw = claudeLocal ? config.paths?.claudeJson || '~/.claude.json' : '';
-  const claudeJson = claudeLocal ? resolvePath(claudeJsonRaw) : '';
-  
-  const defaultSessionName = config.session?.name || (githubRepo ? path.basename(githubRepo) : path.basename(projectPath));
-  const sessionName = defaultSessionName;
-  const sessionUuid = config.session?.uuid || '';
   const permissionMode = config.permissions?.mode || 'auto';
-  
+
   // Host UID/GID dynamic adapters
   const hostUid = process.env.HOST_UID || '1000';
   const hostGid = process.env.HOST_GID || '1000';
 
   // Construct JSON config
   const finalConfig = {
-    github: {
-      repo: githubRepo
-    },
     git: {
       name: gitName,
       email: gitEmail
-    },
-    paths: {
-      workspace: projectPathRaw,
-      claudeLocal: claudeLocal,
-      claudeConfig: claudeConfigRaw,
-      claudeJson: claudeJsonRaw
-    },
-    session: {
-      name: sessionName,
-      uuid: sessionUuid
     },
     permissions: {
       mode: permissionMode
@@ -247,19 +191,13 @@ async function main() {
   // Caddy-fronted https case and the local http case). Replaces the legacy BASE_URL.
   const betterAuthUrl = homepageUrl;
 
-  // Build .env file contents. Infra only — provider/account data moved to the
-  // web UI + SQLite (PRD §8).
+  // Build .env file contents. Infra only — provider/account data lives in the web
+  // UI + SQLite, and every Session's repo/name/identity is per-session state held
+  // by Docker. No host paths: agent containers mount named volumes exclusively.
   const envContent = [
     `# Auto-generated configuration by config.js`,
-    `GITHUB_REPO="${githubRepo}"`,
     `GIT_USER_NAME="${gitName}"`,
     `GIT_USER_EMAIL="${gitEmail}"`,
-    `PROJECT_PATH="${projectPath}"`,
-    `# claude-local host paths (optional). Empty = API-key / OAuth Accounts only.`,
-    `CLAUDE_CONFIG_PATH="${claudeConfig}"`,
-    `CLAUDE_JSON_PATH="${claudeJson}"`,
-    `SESSION_NAME="${sessionName}"`,
-    `SESSION_UUID="${sessionUuid}"`,
     `PERMISSION_MODE="${permissionMode}"`,
     `DOMAIN_NAME="${domain}"`,
     `BETTER_AUTH_URL="${betterAuthUrl}"`,

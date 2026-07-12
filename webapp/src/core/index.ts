@@ -4,7 +4,7 @@
 
 // Domain
 export type { Account, AccountStatus } from "./domain/account";
-export { accountConfigVolumeName, ownsConfigVolume } from "./domain/account";
+export { accountConfigVolumeName } from "./domain/account";
 export * from "./domain/errors";
 export type { LoginContainer } from "./domain/login";
 export { buildLoginLabels, LOGIN_LABELS } from "./domain/login";

@@ -2,9 +2,8 @@
 // (Docker is the source of truth for that check); otherwise removes the row and
 // its Account Config Volume (#5: blocked, never cascade).
 
-import { accountConfigVolumeName, ownsConfigVolume } from "../domain/account";
+import { accountConfigVolumeName } from "../domain/account";
 import { AccountInUseError, AccountNotFoundError } from "../domain/errors";
-import { requireProviderType } from "../domain/provider-type";
 import type { AccountRepository } from "../ports/account-repository";
 import type { ContainerEngine } from "../ports/container-engine";
 
@@ -35,8 +34,6 @@ export function makeDeleteAccount(deps: DeleteAccountDeps) {
     // login completed and the poll already removed it) (#14).
     await deps.engine.removeLoginContainer(account.id);
 
-    if (ownsConfigVolume(requireProviderType(account.providerType))) {
-      await deps.engine.removeVolume(accountConfigVolumeName(account.id));
-    }
+    await deps.engine.removeVolume(accountConfigVolumeName(account.id));
   };
 }

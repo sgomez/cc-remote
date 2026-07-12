@@ -28,15 +28,13 @@ pnpm lint                           # biome check
 pnpm check                          # tsc --noEmit
 pnpm build                          # production build -> webapp/.output/ (node .output/server/index.mjs)
 
-# Single manually-run agent container (not the web-managed multi-session flow):
-docker compose --profile agent up -d claude-agent
-docker compose --profile agent exec claude-agent bash
-
 # Shell into a web-manager-created session container:
 docker exec -it cc-remote-session-<session_name> bash
 ```
 
-`setup.sh` itself runs `config.js` inside a throwaway `node:22-slim` container (mounting the repo at `/app`) so the wizard doesn't require Node on the host; it then writes `config.json` (schema-ish record of choices) and compiles `.env` from it, and offers to `docker compose up -d --build` at the end.
+The `claude-agent` compose service exists **only to build the agent image** (`deploy.replicas: 0`, so `up` never starts it): every agent container is created as a sibling by web-manager. It deliberately carries no compose profile — a profiled service is skipped by `docker compose build`, which used to leave a fresh deployment without the agent image. There is no manually-run single-container flow any more; create Sessions in the web UI.
+
+`setup.sh` itself runs `config.js` inside a throwaway `node:22-slim` container (mounting the repo at `/app`) so the wizard doesn't require Node on the host; it then writes `config.json` (schema-ish record of choices) and compiles `.env` from it, and offers to `docker compose up -d --build` at the end. The wizard asks for **infrastructure only** — domain, GitHub OAuth app, allow-list, Caddy toggle — and derives the rest (auth secret, PUID/PGID, git identity, permission mode). It has no repo, session, or host-path questions: Sessions name themselves and pick their repo in the web UI.
 
 ## Architecture
 
@@ -65,7 +63,9 @@ Session/repo name inputs are validated against the domain `NAME_REGEX` / `REPO_R
 
 ### Accounts and Account Config Volumes
 
-Creating a Session always picks an **Account** (a user-registered instance of a code-defined Provider Type), never a Provider Type directly. Each non-singleton Account owns an **Account Config Volume** `cc-remote-account-<id>` holding its `~/.claude` + `~/.claude.json`, mounted into every Session of that Account; it is the canonical credential store (nothing is duplicated into the DB) and is seeded at registration per the Provider Type's Seeding Method — `api-key` (write the wizard-skip JSON + inject `ANTHROPIC_*` env), `host-mount` (`claude-local` singleton, host bind mount, no volume), or `oauth` (seed JSON then complete an interactive login in a Login Container). Deleting an Account is blocked while labelled Sessions exist and otherwise removes its volume. See `CONTEXT.md` for the full domain glossary.
+Creating a Session always picks an **Account** (a user-registered instance of a code-defined Provider Type), never a Provider Type directly. **Every** Account owns an **Account Config Volume** `cc-remote-account-<id>` holding its `~/.claude` + `~/.claude.json`, mounted into every Session of that Account; it is the canonical credential store (nothing is duplicated into the DB) and is seeded at registration per the Provider Type's Seeding Method — `api-key` (write the wizard-skip JSON + inject `ANTHROPIC_*` env) or `oauth` (seed JSON then complete an interactive login in a Login Container). Deleting an Account is blocked while labelled Sessions exist and otherwise removes its volume. See `CONTEXT.md` for the full domain glossary.
+
+**No agent container mounts a host path.** The `claude-local` Provider Type and its `host-mount` Seeding Method were removed (migration `Migration20260712130000` deletes any leftover row, which would otherwise throw `UnknownProviderTypeError` in the accounts UI): the OAuth Login Container gives the same "log in as me" outcome without coupling the deployment to the host's `~/.claude`, and that bind mount was what made `entrypoint.sh`'s recursive `chown` slow on every start. Workspace isolation lives in `cc-remote-workspace-<name>`, identity in `cc-remote-account-<id>` — volumes, both.
 
 ### Auth
 
@@ -75,15 +75,13 @@ The GitHub access token is retrieved server-side (`auth.api.getAccessToken`) and
 
 ### `entrypoint.sh` — User Identity Adapter
 
-Runs as root first specifically to `usermod`/`groupmod` the container's `node` user to match host `PUID`/`PGID`, then re-execs itself via `gosu node` so everything after that point (git config, cloning, launching `claude`) runs unprivileged. This is what keeps files written into the bind-mounted `/workspace` owned by the host user instead of root. It also: restores `~/.claude.json` from `~/.claude/backups/` if missing, marks `/workspace` as a trusted project and sets `permissions.defaultMode` directly in `~/.claude.json` via a small inline Node script, then execs `claude --remote-control[=SESSION_NAME] --permission-mode=$PERMISSION_MODE` (with `--session-id` pinned when `SESSION_UUID` is set, for remote-control pairing persistence across recreations).
+Runs as root first specifically to `usermod`/`groupmod` the container's `node` user to match host `PUID`/`PGID`, then re-execs itself via `gosu node` so everything after that point (git config, cloning, launching `claude`) runs unprivileged. This is what keeps files written into `/workspace` owned by the host user instead of root. It also: restores `~/.claude.json` from `~/.claude/backups/` if missing, marks `/workspace` as a trusted project and sets `permissions.defaultMode` directly in `~/.claude.json` via a small inline Node script, then execs `claude --remote-control[=SESSION_NAME] --permission-mode=$PERMISSION_MODE` (with `--session-id` pinned when `SESSION_UUID` is set, for remote-control pairing persistence across recreations).
 
-### Host Claude config (`claude-local` only, optional)
-
-`CLAUDE_CONFIG_PATH` (`~/.claude`) and `CLAUDE_JSON_PATH` (`~/.claude.json`) are **optional** and used only by the `claude-local` Account. When set, they are passed to `web-manager` as bind **sources** (resolved on the host, **not** mounted into `web-manager` itself) so the Docker adapter can bind-mount them **read-write** into that Account's Sessions — sharing one authenticated Claude identity from the host. This is a deliberate tradeoff documented inline in `docker-compose.yaml`: a Session so mounted can alter the host's Claude config. A deployment with no host config leaves these empty and runs in API-key / OAuth-Account-only mode; nothing may assume the host Claude config exists. Every other Account gets its identity from its own `cc-remote-account-<id>` volume, and per-Session workspace isolation always lives in the dedicated `cc-remote-workspace-<name>` volume. (The manually-run `claude-agent` compose profile still bind-mounts these paths directly for the single-container flow.)
+**Keep the root-block chowns narrow.** They are scoped to `/home/node/.local` (the `claude` symlink root creates) plus a single non-recursive `chown` of the `$ACCOUNT_CONFIG_DIR` mount point (a fresh Docker volume is root-owned there, so the node user could not otherwise write into it). A blanket `chown -R /home/node` — what this used to do — recurses into whatever is mounted under HOME, so it walked the Account Config Volume on **every** container start; back when `claude-local` bind-mounted the host's `~/.claude` it walked that too, which is what made starts slow and silently rewrote host file ownership. `usermod -u` already re-owns home-tree files belonging to the old uid, so the recursion bought nothing.
 
 ### Auto Mode
 
-Agent containers default to `claude --permission-mode auto`, which relies on Claude's background safety classifier rather than interactive prompts (there's no TTY approval loop available remotely). Container-level isolation (bind mounts limited to workspace + Claude config, `no-new-privileges`, `PidsLimit`) is what makes running unattended in that mode acceptable — see README "Auto Mode & Container Sandboxing" for the full rationale before changing defaults here.
+Agent containers default to `claude --permission-mode auto`, which relies on Claude's background safety classifier rather than interactive prompts (there's no TTY approval loop available remotely). Container-level isolation (mounts limited to the session's own workspace + account config volumes, `no-new-privileges`, `PidsLimit`) is what makes running unattended in that mode acceptable — see README "Auto Mode & Container Sandboxing" for the full rationale before changing defaults here.
 
 ### Config generation flow
 

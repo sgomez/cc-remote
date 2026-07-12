@@ -1,12 +1,12 @@
 // Provider Type catalogue — the code-defined source of truth for the kinds of
 // AI provider a Session can run on (#5 resolution, PRD §3). Adding a future
 // curated provider (GLM, Kimi, ...) is a new entry here, never code surgery in
-// the use cases: capabilities (remoteControl, singleton, seeding) are read from
-// the catalogue, so behaviour follows data.
+// the use cases: capabilities (remoteControl, seeding) are read from the
+// catalogue, so behaviour follows data.
 
 import { UnknownProviderTypeError } from "./errors";
 
-export type SeedingMethod = "api-key" | "host-mount" | "oauth";
+export type SeedingMethod = "api-key" | "oauth";
 
 /** Where a registered field value is stored on the Account. */
 export type FieldStore = "credentials" | "config";
@@ -23,10 +23,8 @@ export type ProviderType = {
   id: string;
   label: string;
   seeding: SeedingMethod;
-  /** claude-local, claude: true; deepseek, custom: false. */
+  /** claude: true; deepseek, custom: false. */
   remoteControl: boolean;
-  /** claude-local only: at most one Account may exist. */
-  singleton: boolean;
   /** What an Account of this type must supply at registration. */
   accountFields: FieldSpec[];
   /** Curated api-key entries (deepseek) ship a baseUrl/model preset. */
@@ -35,19 +33,10 @@ export type ProviderType = {
 
 const CATALOGUE: ProviderType[] = [
   {
-    id: "claude-local",
-    label: "Claude (local)",
-    seeding: "host-mount",
-    remoteControl: true,
-    singleton: true,
-    accountFields: [],
-  },
-  {
     id: "claude",
     label: "Claude",
     seeding: "oauth",
     remoteControl: true,
-    singleton: false,
     accountFields: [],
   },
   {
@@ -55,7 +44,6 @@ const CATALOGUE: ProviderType[] = [
     label: "DeepSeek",
     seeding: "api-key",
     remoteControl: false,
-    singleton: false,
     accountFields: [
       { name: "apiKey", label: "API Key", type: "password", required: true, store: "credentials" },
     ],
@@ -66,7 +54,6 @@ const CATALOGUE: ProviderType[] = [
     label: "Custom",
     seeding: "api-key",
     remoteControl: false,
-    singleton: false,
     accountFields: [
       { name: "apiKey", label: "API Key", type: "password", required: true, store: "credentials" },
       { name: "baseUrl", label: "Base URL", type: "url", required: true, store: "config" },

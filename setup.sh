@@ -18,41 +18,15 @@ echo ""
 docker run --rm -it \
   -v "$(pwd)":/app \
   -w /app \
-  -e HOST_HOME="$HOME" \
-  -e HOST_PWD="$(pwd)" \
   -e HOST_UID="$(id -u)" \
   -e HOST_GID="$(id -g)" \
   node:22-slim node config.js "$@"
 
-# If config succeeded, load .env to prepare directories on the host
+# Nothing to prepare on the host: agent containers mount named Docker volumes
+# exclusively (workspace per Session, config per Account), the web-manager keeps
+# Accounts and settings in SQLite on the cc-remote-db volume, and Sessions live
+# purely as labelled Docker containers. Accounts are created in the web UI.
 if [ $? -eq 0 ] && [ -f .env ]; then
-  # Source .env safely
-  set -a
-  source .env 2>/dev/null
-  set +a
-  
-  echo -e "\n${BLUE}--- Preparing Directories & Files on Host ---${NC}"
-  
-  # Create host directories on the host side (so they have correct user ownership)
-  if [ -n "$PROJECT_PATH" ] && [ ! -d "$PROJECT_PATH" ]; then
-    echo -e " [Info] Creating workspace directory: ${BLUE}$PROJECT_PATH${NC}"
-    mkdir -p "$PROJECT_PATH"
-  fi
-  if [ -n "$CLAUDE_CONFIG_PATH" ] && [ ! -d "$CLAUDE_CONFIG_PATH" ]; then
-    echo -e " [Info] Creating Claude config directory: ${BLUE}$CLAUDE_CONFIG_PATH${NC}"
-    mkdir -p "$CLAUDE_CONFIG_PATH"
-  fi
-  if [ -n "$CLAUDE_JSON_PATH" ] && [ ! -f "$CLAUDE_JSON_PATH" ]; then
-    echo -e " [Info] Creating Claude credentials file: ${BLUE}$CLAUDE_JSON_PATH${NC}"
-    mkdir -p "$(dirname "$CLAUDE_JSON_PATH")"
-    echo "{}" > "$CLAUDE_JSON_PATH"
-  fi
-
-  # NOTE: the legacy per-provider config file and session config dir are gone.
-  # The web-manager stores Accounts and settings in SQLite (a Docker named
-  # volume, cc-remote-db) and Sessions live purely as labelled Docker
-  # containers. Accounts are created in the web UI, not the setup wizard.
-
   # Prompt to run container
   echo ""
   echo -e -n "${GREEN}Do you want to build and start the Docker container now?${NC} [Y/n]: "

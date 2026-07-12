@@ -1,7 +1,7 @@
 // Account — a user-registered instance of a Provider Type (PRD §3, CONTEXT.md).
-// The id also names the Account Config Volume (`cc-remote-account-<id>`).
-
-import type { ProviderType } from "./provider-type";
+// The id also names the Account Config Volume (`cc-remote-account-<id>`), which
+// EVERY Account owns: credentials never come from the host, only from a volume
+// seeded at registration (api-key) or filled by a Login Container (oauth).
 
 export type AccountStatus = "pending_login" | "ready";
 
@@ -20,12 +20,4 @@ export type Account = {
 
 export function accountConfigVolumeName(accountId: string): string {
   return `cc-remote-account-${accountId}`;
-}
-
-/**
- * Whether an Account of this type owns an Account Config Volume. Only
- * host-mount types (claude-local) do not — they bind-mount the host config.
- */
-export function ownsConfigVolume(type: ProviderType): boolean {
-  return type.seeding !== "host-mount";
 }

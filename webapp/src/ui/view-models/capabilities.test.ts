@@ -100,23 +100,21 @@ describe("sessionActionState — busy overlay on the lifecycle buttons", () => {
 describe("seedingLabel / accountCapabilities", () => {
   it("humanizes each seeding method", () => {
     expect(seedingLabel("api-key")).toBe("API key");
-    expect(seedingLabel("host-mount")).toBe("host mount");
     expect(seedingLabel("oauth")).toBe("OAuth");
   });
 
   it("reads capabilities straight from the catalogue entry", () => {
     const caps = accountCapabilities(requireProviderType("deepseek"));
-    expect(caps).toEqual({ remoteControl: false, seedingLabel: "API key", singleton: false });
+    expect(caps).toEqual({ remoteControl: false, seedingLabel: "API key" });
   });
 });
 
-describe("remoteControlPanel — driven by the catalogue for all four types", () => {
+describe("remoteControlPanel — driven by the catalogue for every type", () => {
   it("matches each Provider Type's remoteControl flag", () => {
     for (const type of listProviderTypes()) {
       expect(remoteControlPanel(type).available).toBe(type.remoteControl);
     }
-    // Explicit per-type assertions (the acceptance criterion names all four).
-    expect(remoteControlPanel(requireProviderType("claude-local")).available).toBe(true);
+    // Explicit per-type assertions (the acceptance criterion names every type).
     expect(remoteControlPanel(requireProviderType("claude")).available).toBe(true);
     expect(remoteControlPanel(requireProviderType("deepseek")).available).toBe(false);
     expect(remoteControlPanel(requireProviderType("custom")).available).toBe(false);

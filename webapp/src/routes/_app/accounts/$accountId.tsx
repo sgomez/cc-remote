@@ -65,7 +65,7 @@ function AccountDetailPage() {
   const remove = async () => {
     const ok = await confirm({
       title: `Delete account "${account.displayName}"?`,
-      body: `This cannot be undone${account.configVolume ? ", and its config volume is removed too" : ""}.`,
+      body: "This cannot be undone, and its config volume is removed too.",
       confirmLabel: "Delete",
       danger: true,
     });
@@ -128,24 +128,12 @@ function AccountDetailPage() {
             <span className="actions" style={{ marginTop: 0 }}>
               <Capability on={caps.remoteControl} label="remote control" />
               <span className="badge cap">seeding: {caps.seedingLabel}</span>
-              {caps.singleton && <span className="badge cap">singleton</span>}
             </span>
           </dd>
-          {account.configVolume ? (
-            <>
-              <dt>config volume</dt>
-              <dd>
-                <code className="inline">{account.configVolume}</code>
-              </dd>
-            </>
-          ) : (
-            <>
-              <dt>config source</dt>
-              <dd>
-                host bind mount (<code className="inline">~/.claude</code>) — no volume
-              </dd>
-            </>
-          )}
+          <dt>config volume</dt>
+          <dd>
+            <code className="inline">{account.configVolume}</code>
+          </dd>
           {(type.presets || account.config.baseUrl) && (
             <>
               <dt>base URL</dt>
@@ -198,7 +186,7 @@ function AccountDetailPage() {
           onClick={remove}
         >
           {deleting && <Spinner />}
-          {deleting ? "Deleting…" : `Delete account${account.configVolume ? " + volume" : ""}`}
+          {deleting ? "Deleting…" : "Delete account + volume"}
         </button>
       </div>
       {!guard.deletable && (

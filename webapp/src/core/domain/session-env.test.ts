@@ -45,10 +45,10 @@ describe("buildSessionEnv", () => {
   });
 
   it("omits anthropic env for remote-control (non api-key) types", () => {
-    const local: Account = { ...deepseek, providerType: "claude-local", credentials: {} };
+    const oauth: Account = { ...deepseek, providerType: "claude", credentials: {} };
     const env = buildSessionEnv({
-      type: requireProviderType("claude-local"),
-      account: local,
+      type: requireProviderType("claude"),
+      account: oauth,
       repo: "o/r",
       sessionName: "s1",
       sessionUuid: "uuid-1",

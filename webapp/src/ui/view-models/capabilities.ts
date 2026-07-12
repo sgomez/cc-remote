@@ -90,7 +90,6 @@ export function sessionActionState(
 
 const SEEDING_LABELS: Record<SeedingMethod, string> = {
   "api-key": "API key",
-  "host-mount": "host mount",
   oauth: "OAuth",
 };
 
@@ -101,14 +100,12 @@ export function seedingLabel(seeding: SeedingMethod): string {
 export type AccountCapabilities = {
   remoteControl: boolean;
   seedingLabel: string;
-  singleton: boolean;
 };
 
 export function accountCapabilities(type: ProviderType): AccountCapabilities {
   return {
     remoteControl: type.remoteControl,
     seedingLabel: seedingLabel(type.seeding),
-    singleton: type.singleton,
   };
 }
 
@@ -121,9 +118,9 @@ export type RemoteControlPanel = {
 
 /**
  * Remote Control panel visibility is the Provider Type's `remoteControl` flag —
- * true for claude-local/claude, false for deepseek/custom. This is the single
- * source the panel reads, so the acceptance check ("visibility driven by the
- * catalogue capability, verified for all four provider types") is this function.
+ * true for claude, false for deepseek/custom. This is the single source the
+ * panel reads, so the acceptance check ("visibility driven by the catalogue
+ * capability, verified for every provider type") is this function.
  */
 export function remoteControlPanel(type: ProviderType): RemoteControlPanel {
   return {

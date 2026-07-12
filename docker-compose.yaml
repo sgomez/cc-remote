@@ -1,30 +1,17 @@
 
 services:
+  # The claude-agent image every Session (and every clone / login helper) runs.
+  # This service exists ONLY to build that image: web-manager creates agent
+  # containers as siblings through the socket proxy, so compose must never start
+  # one itself — hence `replicas: 0`. It deliberately has NO profile: a profiled
+  # service is skipped by `docker compose build`, which is what used to leave a
+  # fresh deployment without the agent image unless someone ran the (now removed)
+  # manual `--profile agent` flow.
   claude-agent:
     image: cc-remote-claude-agent
     build: .
-    profiles:
-      - agent
-    restart: unless-stopped
-    tty: true
-    stdin_open: true
-    environment:
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GIT_USER_NAME=${GIT_USER_NAME}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL}
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - HOME=/home/node
-      - SESSION_NAME=${SESSION_NAME}
-      - SESSION_UUID=${SESSION_UUID}
-      - PERMISSION_MODE=${PERMISSION_MODE:-auto}
-    volumes:
-      - ${PROJECT_PATH}:/workspace
-      # NOTE: CLAUDE_CONFIG_PATH and CLAUDE_JSON_PATH are shared read-write between the
-      # host and all agent sessions, so a compromised session can alter the host's Claude
-      # config. This is an accepted tradeoff for sharing auth across sessions.
-      - ${CLAUDE_CONFIG_PATH}:/home/node/.claude
-      - ${CLAUDE_JSON_PATH}:/home/node/.claude.json
+    deploy:
+      replicas: 0
 
   docker-socket-proxy:
     # TODO: pin to a specific digest for reproducibility once vetted (tag pinned to v0.4.2 for now)
@@ -88,11 +75,6 @@ services:
       - DATABASE_PATH=/data/cc-remote.db
       # `debug` library namespaces (silent unless set). Dev: DEBUG=cc-remote:*
       - DEBUG=${DEBUG:-}
-      # Optional claude-local host paths — passed to agent containers as bind
-      # SOURCES (resolved on the host, NOT mounted into web-manager). Empty when
-      # the deployment is API-key-only; the app then simply offers no claude-local.
-      - CLAUDE_CONFIG_PATH=${CLAUDE_CONFIG_PATH:-}
-      - CLAUDE_JSON_PATH=${CLAUDE_JSON_PATH:-}
     volumes:
       - cc-remote-db:/data
 

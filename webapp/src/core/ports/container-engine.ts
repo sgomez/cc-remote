@@ -25,11 +25,8 @@ export type SessionContainerSpec = {
   workspaceVolume: string;
   env: Record<string, string>;
   labels: Record<string, string>;
-  /**
-   * Account Config Volume to mount, or null for host-mount (claude-local),
-   * where the adapter bind-mounts the host Claude config instead.
-   */
-  accountConfigVolume: string | null;
+  /** Account Config Volume to mount — every Account owns one. */
+  accountConfigVolume: string;
   remoteControl: boolean;
 };
 

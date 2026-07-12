@@ -137,25 +137,15 @@ describe("buildSessionCreateOptions — config-volume account", () => {
   });
 });
 
-describe("buildSessionCreateOptions — host-mount (claude-local)", () => {
-  const hostSpec: SessionContainerSpec = { ...sessionSpec, accountConfigVolume: null };
-
-  it("binds the host Claude config in place and sets no staging env", () => {
-    const opts = buildSessionCreateOptions(hostSpec, {
-      ...config,
-      hostClaudeConfigPath: "/host/.claude",
-      hostClaudeJsonPath: "/host/.claude.json",
-    });
-    expect(opts.HostConfig?.Binds).toEqual([
-      "cc-remote-workspace-demo:/workspace",
-      "/host/.claude:/home/node/.claude",
-      "/host/.claude.json:/home/node/.claude.json",
-    ]);
-    expect((opts.Env ?? []).some((e) => e.startsWith(`${ACCOUNT_CONFIG_DIR_ENV}=`))).toBe(false);
-  });
-
-  it("throws when host-mount is requested but host paths are unset (absent-safe)", () => {
-    expect(() => buildSessionCreateOptions(hostSpec, config)).toThrow(/CLAUDE_CONFIG_PATH/);
+describe("buildSessionCreateOptions — named volumes only", () => {
+  it("never binds a host path: every bind source is a cc-remote volume", () => {
+    const binds = buildSessionCreateOptions(sessionSpec, config).HostConfig?.Binds ?? [];
+    expect(binds).not.toHaveLength(0);
+    for (const bind of binds) {
+      const source = bind.split(":")[0];
+      expect(source.startsWith("/")).toBe(false);
+      expect(source.startsWith("cc-remote-")).toBe(true);
+    }
   });
 });
 

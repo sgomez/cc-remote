@@ -36,7 +36,7 @@ Ensure the following tools are installed and configured on your VPS host machine
 
 - **Docker** and **Docker Compose**
 - **Git**
-- **Claude Code CLI (`@anthropic-ai/claude-code`) — only for `claude-local`**: This is **optional**. It is required only if you want to run the `claude-local` Account, which bind-mounts the host's `~/.claude` / `~/.claude.json` into sessions. In that case, install the Claude Code client on your VPS host and authenticate (by running `claude` and completing the login) under the same user account that will execute the containers. A deployment that uses only API-key or OAuth Accounts (created later in the web UI) needs no host Claude config at all.
+- **No Claude Code CLI on the host.** Nothing about your host's Claude config is used: each Account authenticates inside its own Docker volume, either from an API key or by completing an interactive `claude` login in an ephemeral Login Container from the browser.
 - A **GitHub OAuth Application**:
   - To enable "Sign In with GitHub", you must register an OAuth application on your GitHub developer settings page: [GitHub OAuth Apps](https://github.com/settings/developers).
   - Configure the application:
@@ -148,11 +148,11 @@ The `web-manager` is a self-contained TanStack Start + Nitro app (`webapp/`) bui
 
 ### Deployment flow
 
-1. `./setup.sh` — the wizard collects **infrastructure** only (domain, GitHub OAuth app, allow-list, optional claude-local paths, PUID/PGID) and compiles `.env`. It generates a stable `BETTER_AUTH_SECRET`. It does **not** ask about providers/accounts — those are created later in the UI.
-2. `docker compose up -d --build` — brings up `caddy` + `docker-socket-proxy` + `web-manager`. On start the container validates its environment (failing fast and listing every problem if misconfigured) and applies database migrations idempotently.
-3. Open the web UI, sign in with GitHub, and **create Accounts** (API-key providers like DeepSeek/custom, an OAuth `claude` Account, or the optional `claude-local` singleton). Then create Sessions against an Account.
+1. `./setup.sh` — the wizard collects **infrastructure** only: your domain, the GitHub OAuth app, the allow-list, and whether to run Caddy. Everything else is derived (auth secret, PUID/PGID, git identity, permission mode). It asks nothing about repos, sessions, providers or host paths — those are per-Session or per-Account state created in the UI.
+2. `docker compose up -d --build` — builds the agent image, then brings up `caddy` + `docker-socket-proxy` + `web-manager`. On start the container validates its environment (failing fast and listing every problem if misconfigured) and applies database migrations idempotently.
+3. Open the web UI, sign in with GitHub, and **create Accounts** — an OAuth `claude` Account (you complete the `claude` login in an ephemeral Login Container's web terminal, right from the browser) or an API-key one (DeepSeek, or any Anthropic-compatible endpoint via `custom`). Then create Sessions against an Account.
 
-Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote-db` Docker volume, so they survive `docker compose down && up`. Per-Account Claude configuration lives in its own `cc-remote-account-<id>` volume. There is no on-disk provider config file — everything provider/account related lives in the database.
+Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote-db` Docker volume, so they survive `docker compose down && up`. Per-Account Claude configuration lives in its own `cc-remote-account-<id>` volume. There is no on-disk provider config file and no host Claude config — everything provider/account related lives in the database and its volume.
 
 ### Accessing the Web Manager
 
@@ -165,7 +165,7 @@ Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote
 To avoid heavy nesting, performance hits, and security vulnerabilities associated with Docker-in-Docker (DinD), this project uses a **Sibling Containers** architecture:
 - The `web-manager` container never mounts the raw Docker socket. It talks to the host daemon through the read-only `docker-socket-proxy` over TCP (`tcp://docker-socket-proxy:2375`), and therefore runs unprivileged.
 - When you create a Session, the web manager calls the Docker API to create and start a sibling container running the `cc-remote-claude-agent` image, joined to the same `cc-remote` network so the terminal WebSocket proxy can reach it.
-- Claude credentials come from the Session's **Account Config Volume** (API-key seeding or an OAuth login). `claude-local` is optional: only when configured does a Session bind-mount the host's `~/.claude` / `~/.claude.json`. A deployment with no host Claude config runs cleanly in API-key-only mode.
+- Claude credentials always come from the Session's **Account Config Volume** (API-key seeding or an OAuth login). **No agent container ever bind-mounts a host path** — the only mounts are that Account's config volume and the Session's own workspace volume.
 
 ### Session Workspace Lifecycle
 
@@ -185,7 +185,6 @@ To avoid heavy nesting, performance hits, and security vulnerabilities associate
 | **View logs** | `docker compose logs -f` |
 | **Rebuild container** | `docker compose build --no-cache` |
 | **Open container terminal (web session)** | `docker exec -it cc-remote-session-<session_name> bash` |
-| **Open container terminal (manual run)** | `docker compose --profile agent exec claude-agent bash` |
 
 ---
 
@@ -199,15 +198,12 @@ By default, the container runs Claude Code in **Auto Mode** (`--permission-mode 
 Auto Mode replaces routine permission prompts with a background safety classifier. This classifier evaluates pending tool actions and automatically approves safe operations (like reading or editing files in the workspace and running standard git operations) while blocking actions that appear destructive, irreversible, or outside the scope of your request. This significantly reduces "approval fatigue" during remote control sessions.
 
 ### Security & Isolation (The Sandbox)
-Because the Claude Code agent runs entirely inside an isolated Docker container, the container acts as a secure sandbox. Any filesystem changes, commands, or tool executions occur within this sandbox and cannot access or modify the host VPS system files or configurations directly. This sandboxed architecture makes running in Auto Mode highly secure and safe.
+Because the Claude Code agent runs entirely inside an isolated Docker container, the container acts as a secure sandbox. It mounts **no host path at all** — only its own two named volumes (the Session's workspace and its Account's config) — so filesystem changes, commands, and tool executions cannot reach the host VPS's files or configuration. This sandboxed architecture is what makes running in Auto Mode acceptable.
 
 ### Customizing Auto Mode Rules
 You can customize the classifier's behavior (e.g. telling it which repositories, buckets, or domains are trusted to avoid false-positive blocks on routine tasks) by defining an `autoMode` settings block in your user configuration.
 
-Where to put this block depends on the Account:
-
-- **`claude-local`** (host bind mount): the session mounts the host's Claude credentials file (`CLAUDE_JSON_PATH`, default `~/.claude.json`), so customize it directly in `~/.claude.json` on the host.
-- **API-key / OAuth Accounts**: the configuration lives in that Account's own `cc-remote-account-<id>` volume (seeded at registration and, for OAuth, populated by the Login Container), edited from inside a session's web terminal.
+That configuration lives in the Account's own `cc-remote-account-<id>` volume (seeded at registration and, for OAuth Accounts, populated by the Login Container). Edit it from inside any session's web terminal — the change applies to every Session of that Account.
 
 Example block:
 

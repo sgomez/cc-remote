@@ -3,6 +3,7 @@ import { FakeAccountRepository } from "../../../test/fake-account-repository";
 import { FakeContainerEngine } from "../../../test/fake-container-engine";
 import { FakeIdGenerator } from "../../../test/fake-id-generator";
 import type { Account } from "../domain/account";
+import { accountConfigVolumeName } from "../domain/account";
 import {
   AccountNotFoundError,
   AccountNotReadyError,
@@ -88,10 +89,12 @@ describe("create-session", () => {
     expect(container).toMatchObject({ cloning: true, state: "exited" });
   });
 
-  it("mounts no account config volume for a host-mount account", async () => {
-    const local = setup([account({ id: "local", providerType: "claude-local", credentials: {} })]);
-    await local.create({ ...input, accountId: "local" });
-    expect(local.engine.runSessionSpecs[0].accountConfigVolume).toBeNull();
-    expect(local.engine.runSessionSpecs[0].remoteControl).toBe(true);
+  it("mounts the account's config volume and carries its remote-control capability", async () => {
+    const oauth = setup([account({ id: "oauth-1", providerType: "claude", credentials: {} })]);
+    await oauth.create({ ...input, accountId: "oauth-1" });
+    expect(oauth.engine.runSessionSpecs[0].accountConfigVolume).toBe(
+      accountConfigVolumeName("oauth-1"),
+    );
+    expect(oauth.engine.runSessionSpecs[0].remoteControl).toBe(true);
   });
 });

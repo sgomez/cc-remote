@@ -33,11 +33,6 @@ export type DeploymentConfig = {
   databasePath: string;
   puid: string;
   pgid: string;
-  /**
-   * claude-local host bind sources. Optional: a deployment may run API-key-only
-   * with no host `~/.claude` at all. Present only when BOTH paths are supplied.
-   */
-  hostClaude?: { configPath: string; jsonPath: string };
 };
 
 /**
@@ -121,22 +116,6 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
   if (!isNonNegativeInteger(pgid))
     errors.push(`PGID must be a non-negative integer (got "${pgid}")`);
 
-  // claude-local is optional but atomic: seeding needs both the dir and the JSON.
-  const claudeConfigPath = trimmed(env.CLAUDE_CONFIG_PATH);
-  const claudeJsonPath = trimmed(env.CLAUDE_JSON_PATH);
-  let hostClaude: DeploymentConfig["hostClaude"];
-  if (claudeConfigPath || claudeJsonPath) {
-    if (!claudeConfigPath) {
-      errors.push("CLAUDE_CONFIG_PATH is required when CLAUDE_JSON_PATH is set (claude-local)");
-    }
-    if (!claudeJsonPath) {
-      errors.push("CLAUDE_JSON_PATH is required when CLAUDE_CONFIG_PATH is set (claude-local)");
-    }
-    if (claudeConfigPath && claudeJsonPath) {
-      hostClaude = { configPath: claudeConfigPath, jsonPath: claudeJsonPath };
-    }
-  }
-
   if (errors.length > 0) throw new DeploymentConfigError(errors);
 
   return {
@@ -150,6 +129,5 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
     databasePath: trimmed(env.DATABASE_PATH) || DEFAULTS.databasePath,
     puid,
     pgid,
-    hostClaude,
   };
 }

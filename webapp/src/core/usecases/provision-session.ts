@@ -4,7 +4,7 @@
 // left in place so list-sessions can surface `clone_failed` (legacy behaviour).
 
 import type { Account } from "../domain/account";
-import { accountConfigVolumeName, ownsConfigVolume } from "../domain/account";
+import { accountConfigVolumeName } from "../domain/account";
 import { CloneFailedError } from "../domain/errors";
 import type { ProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
@@ -60,7 +60,7 @@ export async function provisionSession(
       permissionMode: params.permissionMode,
     }),
     labels: buildSessionLabels(labelInput),
-    accountConfigVolume: ownsConfigVolume(type) ? accountConfigVolumeName(account.id) : null,
+    accountConfigVolume: accountConfigVolumeName(account.id),
     remoteControl: type.remoteControl,
   });
 

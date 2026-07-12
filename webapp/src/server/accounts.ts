@@ -13,8 +13,6 @@ import {
   makeDeleteAccount,
   makeRegisterAccount,
   makeStartLogin,
-  ownsConfigVolume,
-  requireProviderType,
 } from "~/core";
 import type { AccountDetail, AccountRow, SessionRow } from "~/ui/view-models/rows";
 import { accountRepository, containerEngine, permissionMode } from "./runtime";
@@ -60,7 +58,6 @@ export const getAccount = createServerFn({ method: "GET" })
     const account = await accountRepository().then((r) => r.findById(data.id));
     if (!account) return null;
 
-    const type = requireProviderType(account.providerType);
     const containers = await containerEngine().listSessionContainers();
     const sessions: SessionRow[] = [];
     const seen = new Set<string>();
@@ -81,7 +78,7 @@ export const getAccount = createServerFn({ method: "GET" })
       displayName: account.displayName,
       status: account.status,
       sessionsInUse: sessions.length,
-      configVolume: ownsConfigVolume(type) ? accountConfigVolumeName(account.id) : null,
+      configVolume: accountConfigVolumeName(account.id),
       config: account.config,
       sessions,
     };

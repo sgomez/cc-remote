@@ -49,11 +49,12 @@ credential persistence). Because writes go through the symlinks, credentials
 written by a Login Container (#14) persist to the volume, where `hasCredentials`
 polls for `.claude/.credentials.json` (`CREDENTIALS_MARKER`).
 
-`claude-local` (Provider Type `seeding: host-mount`) is the exception: no config
-volume, `ACCOUNT_CONFIG_DIR` unset, and the host's onboarded config bind-mounted
-directly at `~/.claude` + `~/.claude.json` (paths from `CLAUDE_CONFIG_PATH` /
-`CLAUDE_JSON_PATH`). A deployment without those env vars simply cannot run
-claude-local Sessions — building such a spec throws.
+There is no exception: **every** Account owns a config volume, so every session
+container gets `ACCOUNT_CONFIG_DIR` set and mounts named volumes only. No host
+path is ever bound into an agent container — `buildSessionCreateOptions` has a
+test asserting every bind source is a `cc-remote-*` volume. (The retired
+`claude-local` / `host-mount` type bind-mounted the host's `~/.claude` instead;
+it is gone, along with `CLAUDE_CONFIG_PATH` / `CLAUDE_JSON_PATH`.)
 
 This is the only `entrypoint.sh` change (the PRD forbids others); the shared
 `ttydBasePath` constant is the single source of truth for the terminal base path
@@ -94,7 +95,6 @@ Read by `configFromEnv` (deployment infra; **not** provider/account data):
 | `AGENT_MEMORY_LIMIT` | — | bytes; omitted = no limit |
 | `AGENT_RESTART_POLICY` | `unless-stopped` | restart policy |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | git identity injected into containers |
-| `CLAUDE_CONFIG_PATH` / `CLAUDE_JSON_PATH` | — | host-mount sources for claude-local |
 
 ## Integration test (local, not CI)
 

@@ -4,11 +4,8 @@ import { FakeClock } from "../../../test/fake-clock";
 import { FakeContainerEngine } from "../../../test/fake-container-engine";
 import { FakeIdGenerator } from "../../../test/fake-id-generator";
 import { accountConfigVolumeName } from "../domain/account";
-import {
-  MissingAccountFieldError,
-  SingletonAccountExistsError,
-  UnknownProviderTypeError,
-} from "../domain/errors";
+import { MissingAccountFieldError, UnknownProviderTypeError } from "../domain/errors";
+import { listProviderTypes } from "../domain/provider-type";
 import { ACCOUNT_CONFIG_FILE } from "../domain/seeding";
 import { makeRegisterAccount } from "./register-account";
 
@@ -95,25 +92,18 @@ describe("register-account", () => {
     expect(ctx.engine.hasLoginContainer(account.id)).toBe(false);
   });
 
-  it("registers a host-mount account ready with NO volume", async () => {
-    const account = await ctx.register({
-      providerType: "claude-local",
-      displayName: "Local",
-      fields: {},
-    });
-    expect(account.status).toBe("ready");
-    expect(ctx.engine.hasVolume(accountConfigVolumeName(account.id))).toBe(false);
-    expect(ctx.engine.volumes.size).toBe(0);
+  it("gives EVERY account its own config volume — no type is host-backed", async () => {
+    for (const providerType of listProviderTypes().map((t) => t.id)) {
+      const account = await ctx.register({
+        providerType,
+        displayName: providerType,
+        fields: { apiKey: "sk", baseUrl: "https://x", model: "m" },
+      });
+      expect(ctx.engine.hasVolume(accountConfigVolumeName(account.id))).toBe(true);
+    }
   });
 
-  it("enforces the claude-local singleton", async () => {
-    await ctx.register({ providerType: "claude-local", displayName: "one", fields: {} });
-    await expect(
-      ctx.register({ providerType: "claude-local", displayName: "two", fields: {} }),
-    ).rejects.toThrow(SingletonAccountExistsError);
-  });
-
-  it("allows many accounts of a non-singleton type", async () => {
+  it("allows many accounts of the same type", async () => {
     await ctx.register({ providerType: "deepseek", displayName: "a", fields: { apiKey: "1" } });
     await ctx.register({ providerType: "deepseek", displayName: "b", fields: { apiKey: "2" } });
     expect((await ctx.accounts.findAll()).length).toBe(2);

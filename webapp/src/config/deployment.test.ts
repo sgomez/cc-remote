@@ -29,7 +29,6 @@ describe("loadDeploymentConfig", () => {
     expect(cfg.agentImage).toBe("cc-remote-claude-agent");
     expect(cfg.puid).toBe("1000");
     expect(cfg.pgid).toBe("1000");
-    expect(cfg.hostClaude).toBeUndefined();
   });
 
   it("honours provided optional vars over defaults", () => {
@@ -106,30 +105,14 @@ describe("loadDeploymentConfig", () => {
     expect(errors.some((m) => m.includes("PGID"))).toBe(true);
   });
 
-  describe("optional claude-local host mounts", () => {
-    it("is absent when neither path is set (API-key-only deployment)", () => {
-      expect(loadDeploymentConfig(VALID).hostClaude).toBeUndefined();
+  it("ignores the retired claude-local host paths instead of failing on them", () => {
+    // A .env left over from an older deployment still carries these. They are no
+    // longer part of the config, and a stale value must not brick startup.
+    const cfg = loadDeploymentConfig({
+      ...VALID,
+      CLAUDE_CONFIG_PATH: "/home/u/.claude",
+      CLAUDE_JSON_PATH: "/home/u/.claude.json",
     });
-
-    it("is populated when both paths are set", () => {
-      const cfg = loadDeploymentConfig({
-        ...VALID,
-        CLAUDE_CONFIG_PATH: "/home/u/.claude",
-        CLAUDE_JSON_PATH: "/home/u/.claude.json",
-      });
-      expect(cfg.hostClaude).toEqual({
-        configPath: "/home/u/.claude",
-        jsonPath: "/home/u/.claude.json",
-      });
-    });
-
-    it("errors when only one of the two paths is set (both or neither)", () => {
-      expect(() =>
-        loadDeploymentConfig({ ...VALID, CLAUDE_CONFIG_PATH: "/home/u/.claude" }),
-      ).toThrow(/CLAUDE_JSON_PATH/);
-      expect(() =>
-        loadDeploymentConfig({ ...VALID, CLAUDE_JSON_PATH: "/home/u/.claude.json" }),
-      ).toThrow(/CLAUDE_CONFIG_PATH/);
-    });
+    expect(cfg).not.toHaveProperty("hostClaude");
   });
 });
