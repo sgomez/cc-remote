@@ -43,6 +43,16 @@ describe("recover-logins", () => {
     expect(engine.runLoginSpecs).toHaveLength(1);
   });
 
+  it("replaces a crashed-but-exited Login Container with a running one", async () => {
+    // Login Containers have no AutoRemove, so a crashed ttyd leaves an `exited`
+    // container present. Recovery must not re-attach to that dead terminal.
+    engine.seedLoginContainer("acc-1", "exited");
+    await recoverLogins();
+    expect(engine.hasLoginContainer("acc-1")).toBe(true);
+    expect((await engine.getLoginContainer("acc-1"))?.state).toBe("running");
+    expect(engine.runLoginSpecs).toHaveLength(1);
+  });
+
   it("flips accounts whose login completed while the web-manager was down", async () => {
     engine.seedLoginContainer("acc-1");
     engine.putCredentials(accountConfigVolumeName("acc-1"));

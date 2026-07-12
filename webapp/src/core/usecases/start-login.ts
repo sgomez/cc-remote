@@ -29,10 +29,15 @@ export function makeStartLogin(deps: StartLoginDeps) {
     // Already logged in — nothing to start.
     if (account.status === "ready") return null;
 
-    // Idempotent re-entry / recovery: reuse an existing (possibly orphaned)
-    // container instead of spawning a second one on the same volume.
+    // Idempotent re-entry / recovery: reuse a still-running orphaned container
+    // instead of spawning a second one on the same volume. A crashed login
+    // leaves an `exited` container present (Login Containers have no
+    // AutoRemove), and re-attaching to it would strand the flow behind a dead
+    // terminal the poll can never complete — so treat any non-`running`
+    // container as absent and recreate it.
     const existing = await deps.engine.getLoginContainer(account.id);
-    if (existing) return existing;
+    if (existing?.state === "running") return existing;
+    if (existing) await deps.engine.removeLoginContainer(account.id);
 
     await deps.engine.runLoginContainer({
       accountId: account.id,

@@ -55,6 +55,13 @@ describe("start-login", () => {
     expect(engine.runLoginSpecs).toHaveLength(0);
   });
 
+  it("recreates a crashed-but-exited container instead of re-attaching to it", async () => {
+    engine.seedLoginContainer("acc-1", "exited");
+    const login = await startLogin({ accountId: "acc-1" });
+    expect(login?.state).toBe("running");
+    expect(engine.runLoginSpecs).toHaveLength(1);
+  });
+
   it("returns null (no container) for an already-ready account", async () => {
     accounts = new FakeAccountRepository([account({ status: "ready" })]);
     startLogin = makeStartLogin({ accounts, engine });
