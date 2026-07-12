@@ -7,7 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="index.css">
+  <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 </head>
 <body>
   <!-- Background Glow Effects -->
@@ -50,6 +53,10 @@
           </div>
         </div>
         <div class="header-actions">
+          <button id="btn-manage-providers" class="btn btn-secondary">
+            <i data-lucide="settings"></i>
+            <span>Providers</span>
+          </button>
           <button id="btn-new-session" class="btn btn-primary">
             <i data-lucide="plus"></i>
             <span>New Session</span>
@@ -103,6 +110,17 @@
             <input type="text" id="session-name-input" placeholder="e.g. project-x" required pattern="[a-zA-Z0-9_-]+" title="Alphanumeric, hyphens, and underscores only.">
           </div>
           <p class="input-help">This determines the container name and the Claude Remote session ID.</p>
+        </div>
+        
+        <div class="form-group">
+          <label for="provider-select">Select Provider</label>
+          <div class="input-wrapper select-wrapper">
+            <i data-lucide="cpu" class="input-icon"></i>
+            <select id="provider-select" class="form-control select-dropdown">
+              <!-- Dynamically filled -->
+            </select>
+            <i data-lucide="chevron-down" class="select-arrow"></i>
+          </div>
         </div>
         
         <div class="form-group" id="repo-select-group">
@@ -258,13 +276,111 @@
         <h3><i data-lucide="scroll"></i> Container Logs: <span id="logs-session-display"></span></h3>
         <button class="modal-close" data-close-modal>&times;</button>
       </div>
-      <div class="modal-body">
-        <pre id="logs-content" class="logs-viewer-pre">Loading logs...</pre>
+      <div class="modal-body terminal-body" style="height: 450px;">
+        <div id="logs-terminal" style="width: 100%; height: 100%;"></div>
       </div>
       <div class="modal-footer">
         <button type="button" id="btn-refresh-logs" class="btn btn-secondary">
           <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
           <span>Refresh</span>
+        </button>
+        <button type="button" class="btn btn-primary" data-close-modal>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MANAGE PROVIDERS -->
+  <div id="providers-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <h3><i data-lucide="settings"></i> Manage Providers</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- DeepSeek Section -->
+        <div class="provider-section">
+          <h4>DeepSeek API Integration</h4>
+          <p class="section-desc">Run sessions using DeepSeek's Anthropic-compatible API endpoint.</p>
+          <form id="deepseek-config-form">
+            <div class="form-group">
+              <label for="deepseek-key-input">DeepSeek API Key</label>
+              <div class="input-wrapper">
+                <i data-lucide="key" class="input-icon"></i>
+                <input type="password" id="deepseek-key-input" placeholder="Enter DeepSeek API Key (sk-...)">
+                <button type="button" id="btn-toggle-ds-key" class="btn-input-action" title="Show/Hide API Key">
+                  <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
+                </button>
+              </div>
+            </div>
+            <button type="submit" id="btn-save-deepseek" class="btn btn-primary btn-sm">Save Key</button>
+          </form>
+        </div>
+
+        <hr class="modal-divider">
+
+        <!-- Claude Accounts Section -->
+        <div class="provider-section">
+          <h4>Saved Claude Accounts</h4>
+          <p class="section-desc">Manage the Claude accounts captured from temporary login sessions.</p>
+          <div id="saved-claude-list" class="saved-accounts-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-close-modal>Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SAVE CLAUDE ACCOUNT -->
+  <div id="save-account-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <h3><i data-lucide="save"></i> Save Claude Account</h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <form id="save-account-form">
+        <div class="modal-body">
+          <p>This will copy the Claude credentials from the container and save them on the server for reuse.</p>
+          <div class="form-group">
+            <label for="friendly-name-input">Account Friendly Name</label>
+            <div class="input-wrapper">
+              <i data-lucide="user" class="input-icon"></i>
+              <input type="text" id="friendly-name-input" placeholder="e.g. My Personal Account" required>
+            </div>
+            <p class="input-help">Give this account a recognizable name.</p>
+          </div>
+          <div id="save-account-error" class="error-banner hidden">
+            <i data-lucide="alert-circle"></i>
+            <span class="error-msg"></span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-save-account">
+            <span>Save Account</span>
+            <i data-lucide="loader-2" class="spin hidden"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CONSOLE TERMINAL -->
+  <div id="console-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card console-modal-card">
+      <div class="modal-header">
+        <h3><i data-lucide="terminal"></i> Session Console: <span id="console-session-display"></span></h3>
+        <button class="modal-close" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body terminal-body">
+        <iframe id="terminal-iframe" class="terminal-iframe" src="" frameborder="0" allow="clipboard-read; clipboard-write"></iframe>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-reconnect-terminal">
+          <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+          <span>Reconnect</span>
         </button>
         <button type="button" class="btn btn-primary" data-close-modal>Close</button>
       </div>

@@ -47,6 +47,16 @@ if [ $? -eq 0 ] && [ -f .env ]; then
     mkdir -p "$(dirname "$CLAUDE_JSON_PATH")"
     echo "{}" > "$CLAUDE_JSON_PATH"
   fi
+
+  if [ ! -f "providers.json" ]; then
+    echo -e " [Info] Creating providers storage file: ${BLUE}providers.json${NC}"
+    echo "[]" > "providers.json"
+  fi
+
+  if [ ! -d ".sessions_config" ]; then
+    echo -e " [Info] Creating sessions config directory: ${BLUE}.sessions_config${NC}"
+    mkdir -p ".sessions_config"
+  fi
   
   # Prompt to run container
   echo ""
