@@ -10,18 +10,22 @@ export const ACCOUNT_CONFIG_FILE = ".claude.json";
 
 export type WizardSkipConfig = {
   hasCompletedOnboarding: true;
+  theme: string;
   permissions: { defaultMode: string };
   projects: Record<string, { hasTrustDialogAccepted: true }>;
 };
 
 /**
- * The minimal `~/.claude.json` that skips both blocking modals: the theme
- * picker / security notes (hasCompletedOnboarding) and the folder-trust dialog
- * (projects["/workspace"].hasTrustDialogAccepted). Both keys are required.
+ * The minimal `~/.claude.json` that skips every blocking modal: the security
+ * notes (hasCompletedOnboarding), the theme picker (`theme` — prompted for
+ * separately, so onboarding being complete does NOT suppress it) and the
+ * folder-trust dialog (projects["/workspace"].hasTrustDialogAccepted). All
+ * three keys are required.
  */
 export function wizardSkipConfig(permissionMode: string): WizardSkipConfig {
   return {
     hasCompletedOnboarding: true,
+    theme: "dark",
     permissions: { defaultMode: permissionMode },
     projects: { "/workspace": { hasTrustDialogAccepted: true } },
   };

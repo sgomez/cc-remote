@@ -21,6 +21,7 @@ describe("wizard-skip config", () => {
     const cfg = wizardSkipConfig("auto");
     expect(cfg).toEqual({
       hasCompletedOnboarding: true,
+      theme: "dark",
       permissions: { defaultMode: "auto" },
       projects: { "/workspace": { hasTrustDialogAccepted: true } },
     });

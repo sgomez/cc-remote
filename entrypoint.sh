@@ -121,6 +121,11 @@ try {
   if (!config.permissions) config.permissions = {};
   config.permissions.defaultMode = process.env.PERMISSION_MODE || "auto";
 
+  // Claude prompts for a theme whenever this key is absent, even with
+  // onboarding marked complete — that modal blocks a remote/ttyd session.
+  // Only default it: a theme the user picked themselves must survive.
+  if (!config.theme) config.theme = "dark";
+
   fs.writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
   console.log(" [Info] Automatically configured default permission mode and trusted /workspace in Claude settings.");
 } catch (e) {
