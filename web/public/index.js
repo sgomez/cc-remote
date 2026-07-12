@@ -62,8 +62,27 @@ document.addEventListener('DOMContentLoaded', () => {
   // Modal: View Logs
   const logsModal = document.getElementById('logs-modal');
   const logsSessionDisplay = document.getElementById('logs-session-display');
-  const logsContent = document.getElementById('logs-content');
   const btnRefreshLogs = document.getElementById('btn-refresh-logs');
+
+  // Modal: Console Terminal
+  const consoleModal = document.getElementById('console-modal');
+  const consoleSessionDisplay = document.getElementById('console-session-display');
+  const terminalIframe = document.getElementById('terminal-iframe');
+  const btnReconnectTerminal = document.getElementById('btn-reconnect-terminal');
+
+  // Providers UI Elements
+  const btnManageProviders = document.getElementById('btn-manage-providers');
+  const providersModal = document.getElementById('providers-modal');
+  const providerSelect = document.getElementById('provider-select');
+  const deepseekConfigForm = document.getElementById('deepseek-config-form');
+  const deepseekKeyInput = document.getElementById('deepseek-key-input');
+  const btnToggleDsKey = document.getElementById('btn-toggle-ds-key');
+  const savedClaudeList = document.getElementById('saved-claude-list');
+  const saveAccountModal = document.getElementById('save-account-modal');
+  const saveAccountForm = document.getElementById('save-account-form');
+  const friendlyNameInput = document.getElementById('friendly-name-input');
+  const saveAccountError = document.getElementById('save-account-error');
+  const btnSubmitSaveAccount = document.getElementById('btn-submit-save-account');
 
   // State
   let activeDeleteSessionName = null;
@@ -75,6 +94,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let isManualRepoActive = false;
   let repositories = [];
   let lastSessionsStateJson = '';
+  let configuredProviders = [];
+  let sessionNameForSaveAccount = null;
+  let activeConsoleSessionName = null;
+  let logsTerminal = null;
+  let logsTerminalFitAddon = null;
 
   // Initialize Lucide Icons
   if (typeof lucide !== 'undefined') {
@@ -126,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (data.authenticated) {
         showScreen('dashboard');
+        loadProviders();
         loadSessions();
       } else {
         showScreen('login');
@@ -211,7 +236,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (isCloneFailed) {
           actionButtonHtml = `<button type="button" class="btn btn-warning btn-sm btn-reset" data-name="${safeName}" data-running="false"><i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i> Retry</button>`;
         } else if (isRunning) {
-          actionButtonHtml = `<button type="button" class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>`;
+          actionButtonHtml = `
+            <button type="button" class="btn btn-primary btn-sm btn-console" data-name="${safeName}"><i data-lucide="terminal" style="width: 14px; height: 14px;"></i> Console</button>
+            <button type="button" class="btn btn-secondary btn-sm btn-stop" data-name="${safeName}"><i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop</button>
+          `;
         } else {
           actionButtonHtml = `<button type="button" class="btn btn-primary btn-sm btn-start" data-name="${safeName}"><i data-lucide="play" style="width: 14px; height: 14px;"></i> Start</button>`;
         }
@@ -252,6 +280,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i data-lucide="rotate-ccw"></i>
                     <span>Reset</span>
                   </button>
+                  ${isRunning ? `
+                  <button type="button" class="dropdown-item btn-save-account text-success" data-name="${safeName}">
+                    <i data-lucide="save"></i>
+                    <span>Save Account</span>
+                  </button>
+                  ` : ''}
                   <button type="button" class="dropdown-item btn-delete text-danger" data-name="${safeName}" ${(isRunning || isCloning) ? 'disabled title="Stop the container or wait for cloning to finish before deleting."' : ''}>
                     <i data-lucide="trash-2"></i>
                     <span>Delete</span>
@@ -276,6 +310,9 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.btn-stop').forEach(btn => {
         btn.addEventListener('click', () => controlSession(btn.dataset.name, 'stop'));
       });
+      document.querySelectorAll('.btn-console').forEach(btn => {
+        btn.addEventListener('click', () => openConsoleModal(btn.dataset.name));
+      });
       document.querySelectorAll('.btn-delete').forEach(btn => {
         btn.addEventListener('click', () => {
           if (!btn.hasAttribute('disabled')) {
@@ -298,6 +335,11 @@ document.addEventListener('DOMContentLoaded', () => {
           const name = btn.dataset.name;
           const repo = btn.dataset.repo;
           openCloneModal(name, repo);
+        });
+      });
+      document.querySelectorAll('.btn-save-account').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openSaveAccountModal(btn.dataset.name);
         });
       });
 
@@ -330,9 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
       resetModal.classList.add('hidden');
       cloneModal.classList.add('hidden');
       logsModal.classList.add('hidden');
+      providersModal.classList.add('hidden');
+      saveAccountModal.classList.add('hidden');
+      consoleModal.classList.add('hidden');
+      terminalIframe.src = '';
       activeLogsSessionName = null;
       activeResetSessionName = null;
       activeCloneSessionName = null;
+      sessionNameForSaveAccount = null;
+      activeConsoleSessionName = null;
     });
   });
 
@@ -457,6 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const name = sessionNameInput.value.trim();
     const repo = isManualRepoActive ? repoManualInput.value.trim() : repoSearchInput.value.trim();
+    const providerId = providerSelect.value;
 
     // Frontend validations
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
@@ -480,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, repo })
+        body: JSON.stringify({ name, repo, providerId })
       });
       
       const data = await res.json();
@@ -504,9 +553,32 @@ document.addEventListener('DOMContentLoaded', () => {
   async function openLogsModal(name) {
     activeLogsSessionName = name;
     logsSessionDisplay.textContent = name;
-    logsContent.textContent = 'Loading container logs...';
     logsModal.classList.remove('hidden');
-    await fetchLogs(name);
+
+    // Initialize xterm.js for logs if not already initialized
+    if (!logsTerminal) {
+      logsTerminal = new Terminal({
+        convertEol: true,
+        disableStdin: true,
+        fontSize: 12,
+        fontFamily: 'Courier New, courier, monospace',
+        theme: {
+          background: '#000000',
+          foreground: '#f8fafc'
+        }
+      });
+      logsTerminalFitAddon = new FitAddon.FitAddon();
+      logsTerminal.loadAddon(logsTerminalFitAddon);
+      logsTerminal.open(document.getElementById('logs-terminal'));
+    }
+
+    // Small delay to let modal render fully so FitAddon can compute coordinates correctly
+    setTimeout(() => {
+      logsTerminalFitAddon.fit();
+      logsTerminal.clear();
+      logsTerminal.write('Loading container logs...\n');
+      fetchLogs(name);
+    }, 100);
   }
 
   async function fetchLogs(name) {
@@ -518,19 +590,26 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const data = await res.json();
       if (res.ok) {
-        logsContent.textContent = data.logs || 'No logs available for this container.';
-        logsContent.scrollTop = logsContent.scrollHeight;
+        logsTerminal.clear();
+        if (data.logs) {
+          logsTerminal.write(data.logs);
+        } else {
+          logsTerminal.write('No logs available for this container.\n');
+        }
       } else {
-        logsContent.textContent = `Error: ${data.error || 'Failed to retrieve logs.'}`;
+        logsTerminal.clear();
+        logsTerminal.write(`\x1b[31mError: ${data.error || 'Failed to retrieve logs.'}\x1b[0m\n`);
       }
     } catch (e) {
-      logsContent.textContent = 'Network error while retrieving container logs.';
+      logsTerminal.clear();
+      logsTerminal.write('\x1b[31mNetwork error while retrieving container logs.\x1b[0m\n');
     }
   }
 
   btnRefreshLogs.addEventListener('click', () => {
     if (activeLogsSessionName) {
-      logsContent.textContent = 'Refreshing logs...';
+      logsTerminal.clear();
+      logsTerminal.write('Refreshing logs...\n');
       fetchLogs(activeLogsSessionName);
     }
   });
@@ -704,4 +783,232 @@ document.addEventListener('DOMContentLoaded', () => {
       loadSessions();
     }
   }, 4000);
+
+  // --- Providers Management Actions ---
+  btnManageProviders.addEventListener('click', () => {
+    providersModal.classList.remove('hidden');
+    loadProviders();
+  });
+
+  btnToggleDsKey.addEventListener('click', () => {
+    const type = deepseekKeyInput.getAttribute('type') === 'password' ? 'text' : 'password';
+    deepseekKeyInput.setAttribute('type', type);
+    const eyeIcon = btnToggleDsKey.querySelector('i') || btnToggleDsKey.querySelector('svg');
+    if (eyeIcon) {
+      if (type === 'password') {
+        eyeIcon.setAttribute('data-lucide', 'eye');
+      } else {
+        eyeIcon.setAttribute('data-lucide', 'eye-off');
+      }
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    }
+  });
+
+  deepseekConfigForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const apiKey = deepseekKeyInput.value.trim();
+    if (!apiKey) return;
+
+    try {
+      const res = await fetch('/api/providers/deepseek', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey })
+      });
+      if (res.ok) {
+        alert('DeepSeek API Key saved successfully.');
+        loadProviders();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to save DeepSeek key.');
+      }
+    } catch (err) {
+      alert('Network error while saving DeepSeek key.');
+    }
+  });
+
+  async function loadProviders() {
+    try {
+      const res = await fetch('/api/providers');
+      if (res.ok) {
+        configuredProviders = await res.json();
+        renderProvidersDropdown();
+        renderSavedClaudeList();
+        
+        const ds = configuredProviders.find(p => p.id === 'deepseek');
+        if (ds && ds.hasKey) {
+          deepseekKeyInput.placeholder = '••••••••••••••••••••••••••••••••';
+        } else {
+          deepseekKeyInput.placeholder = 'Enter DeepSeek API Key (sk-...)';
+          deepseekKeyInput.value = '';
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load providers:', err);
+    }
+  }
+
+  function renderProvidersDropdown() {
+    providerSelect.innerHTML = '';
+    
+    const localOpt = document.createElement('option');
+    localOpt.value = 'claude-local';
+    localOpt.textContent = 'Claude (Local Authentication)';
+    providerSelect.appendChild(localOpt);
+
+    const newLoginOpt = document.createElement('option');
+    newLoginOpt.value = 'claude-new-login';
+    newLoginOpt.textContent = 'Claude (New Login / Temporary Session)';
+    providerSelect.appendChild(newLoginOpt);
+
+    const ds = configuredProviders.find(p => p.id === 'deepseek');
+    const dsOpt = document.createElement('option');
+    dsOpt.value = 'deepseek';
+    dsOpt.textContent = 'DeepSeek';
+    if (!ds || !ds.hasKey) {
+      dsOpt.textContent += ' (Key Not Set)';
+      dsOpt.disabled = true;
+    }
+    providerSelect.appendChild(dsOpt);
+
+    configuredProviders.filter(p => p.type === 'claude-saved').forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `Claude - ${p.name}`;
+      providerSelect.appendChild(opt);
+    });
+  }
+
+  function renderSavedClaudeList() {
+    savedClaudeList.innerHTML = '';
+    const savedAccounts = configuredProviders.filter(p => p.type === 'claude-saved');
+    
+    if (savedAccounts.length === 0) {
+      savedClaudeList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px 0;">No saved Claude accounts yet.</div>';
+      return;
+    }
+
+    savedAccounts.forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'saved-account-item';
+      
+      const info = document.createElement('div');
+      info.className = 'saved-account-info';
+      
+      const name = document.createElement('span');
+      name.className = 'saved-account-name';
+      name.textContent = p.name;
+      
+      const type = document.createElement('span');
+      type.className = 'saved-account-type';
+      type.textContent = 'OAuth Credentials';
+      
+      info.appendChild(name);
+      info.appendChild(type);
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm btn-icon';
+      deleteBtn.style.padding = '6px';
+      deleteBtn.innerHTML = '<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>';
+      deleteBtn.title = 'Delete saved credentials';
+      
+      deleteBtn.addEventListener('click', async () => {
+        if (confirm(`Are you sure you want to delete the saved Claude account "${p.name}"?`)) {
+          try {
+            const res = await fetch(`/api/providers/claude/${p.id}`, { method: 'DELETE' });
+            if (res.ok) {
+              loadProviders();
+            } else {
+              alert('Failed to delete account.');
+            }
+          } catch (err) {
+            alert('Network error while deleting account.');
+          }
+        }
+      });
+      
+      item.appendChild(info);
+      item.appendChild(deleteBtn);
+      savedClaudeList.appendChild(item);
+    });
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }
+
+  // --- Save Claude Account Actions ---
+  function openSaveAccountModal(name) {
+    sessionNameForSaveAccount = name;
+    friendlyNameInput.value = '';
+    saveAccountError.classList.add('hidden');
+    saveAccountModal.classList.remove('hidden');
+  }
+
+  saveAccountForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!sessionNameForSaveAccount) return;
+
+    saveAccountError.classList.add('hidden');
+    const friendlyName = friendlyNameInput.value.trim();
+    if (!friendlyName) return;
+
+    const btnText = btnSubmitSaveAccount.querySelector('span');
+    const btnSpinner = btnSubmitSaveAccount.querySelector('.spin');
+    btnText.classList.add('hidden');
+    btnSpinner.classList.remove('hidden');
+    btnSubmitSaveAccount.setAttribute('disabled', 'disabled');
+
+    try {
+      const res = await fetch(`/api/sessions/${sessionNameForSaveAccount}/save-account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friendlyName })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        saveAccountModal.classList.add('hidden');
+        alert(`Account saved successfully as: ${friendlyName}`);
+        loadProviders();
+      } else {
+        showError(saveAccountError, data.error || 'Failed to save account.');
+      }
+    } catch (err) {
+      showError(saveAccountError, 'Network error. Failed to connect to server.');
+    } finally {
+      btnText.classList.remove('hidden');
+      btnSpinner.classList.add('hidden');
+      btnSubmitSaveAccount.removeAttribute('disabled');
+      sessionNameForSaveAccount = null;
+    }
+  });
+
+  // --- Console Terminal Actions ---
+  function openConsoleModal(name) {
+    activeConsoleSessionName = name;
+    consoleSessionDisplay.textContent = name;
+    
+    // Load terminal URL in iframe
+    terminalIframe.src = `/api/sessions/${name}/terminal/`;
+    
+    consoleModal.classList.remove('hidden');
+    
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }
+
+  btnReconnectTerminal.addEventListener('click', () => {
+    if (activeConsoleSessionName) {
+      terminalIframe.src = '';
+      setTimeout(() => {
+        if (activeConsoleSessionName) {
+          terminalIframe.src = `/api/sessions/${activeConsoleSessionName}/terminal/`;
+        }
+      }, 300);
+    }
+  });
 });

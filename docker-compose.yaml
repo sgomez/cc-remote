@@ -47,6 +47,7 @@ services:
   web-manager:
     build: ./web
     restart: unless-stopped
+    user: "0:0"
     ports:
       - "127.0.0.1:${WEB_PORT:-4000}:4000"
     depends_on:
@@ -71,6 +72,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:-}
       - BASE_URL=${BASE_URL:-}
       - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
+      - PROJECT_PATH=${PROJECT_PATH}
+    volumes:
+      - ./providers.json:/app/providers.json
+      - ./.sessions_config:/app/.sessions_config
 
   caddy:
     image: caddy:2

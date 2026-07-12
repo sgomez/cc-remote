@@ -14,21 +14,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Install Claude Code globally
-RUN npm install -g @anthropic-ai/claude-code
+# 2. Install Claude Code globally and download ttyd (architecture-aware)
+RUN npm install -g @anthropic-ai/claude-code && \
+    ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then TTYD_ARCH="x86_64"; \
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then TTYD_ARCH="aarch64"; \
+    else TTYD_ARCH="x86_64"; fi && \
+    curl -fsSL -o /usr/local/bin/ttyd "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${TTYD_ARCH}" && \
+    chmod +x /usr/local/bin/ttyd
 
 # 3. Create working directories and config folders with proper permissions
 RUN mkdir -p /workspace /home/node/.claude && chown -R node:node /workspace /home/node/.claude
 
 WORKDIR /workspace
 
-# 4. Copy the entrypoint script
+# 4. Copy the entrypoint scripts
 COPY --chown=node:node entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# USER node
+COPY --chown=node:node console-entrypoint.sh /usr/local/bin/console-entrypoint.sh
+RUN chmod +x /usr/local/bin/console-entrypoint.sh
+
+EXPOSE 7681
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["claude", "--remote-control", "--permission-mode", "auto"]
-
-
+CMD ["sh", "-c", "ttyd -p 7681 --base-path /api/sessions/${SESSION_NAME}/terminal -W /usr/local/bin/console-entrypoint.sh"]
