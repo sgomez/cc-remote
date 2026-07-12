@@ -9,7 +9,12 @@ export {
   type DockerAdapterConfig,
   parseDockerHost,
 } from "./config";
-export { loginTerminalBasePath, ttydBasePath } from "./container-mapping";
+export {
+  loginTerminalBasePath,
+  TTYD_PORT,
+  ttydBasePath,
+  ttydWebSocketUrl,
+} from "./container-mapping";
 export { CREDENTIALS_MARKER } from "./container-specs";
 export {
   createDockerContainerEngine,

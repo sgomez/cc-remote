@@ -90,3 +90,17 @@ export function toLoginContainer(view: {
 export function loginTerminalBasePath(accountId: string): string {
   return `/api/accounts/${accountId}/login/terminal`;
 }
+
+/** Port ttyd listens on inside every agent container (image `EXPOSE 7681`). */
+export const TTYD_PORT = 7681;
+
+/**
+ * The ttyd WebSocket endpoint of a Session's agent container on the compose
+ * network — where the #15 proxy bridges browser terminal frames. Composed from
+ * the same `mainContainerName` + `ttydBasePath` the adapter creates the
+ * container with, so the proxy target can never drift from the running ttyd.
+ * ttyd serves its socket at `<base-path>/ws`.
+ */
+export function ttydWebSocketUrl(sessionName: string): string {
+  return `ws://${mainContainerName(sessionName)}:${TTYD_PORT}${ttydBasePath(sessionName)}/ws`;
+}

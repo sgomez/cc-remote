@@ -10,6 +10,7 @@ import {
   toLoginContainer,
   toSessionContainer,
   ttydBasePath,
+  ttydWebSocketUrl,
 } from "./container-mapping";
 
 describe("container name derivation", () => {
@@ -108,5 +109,19 @@ describe("login container mapping", () => {
 
   it("exposes a login terminal base path mirroring the session one", () => {
     expect(loginTerminalBasePath("acc-1")).toBe("/api/accounts/acc-1/login/terminal");
+  });
+});
+
+describe("ttydWebSocketUrl", () => {
+  it("targets the agent container's ttyd socket on the compose network", () => {
+    expect(ttydWebSocketUrl("demo")).toBe(
+      "ws://cc-remote-session-demo:7681/api/sessions/demo/terminal/ws",
+    );
+  });
+
+  it("stays composed from the container name and base path (single source of truth)", () => {
+    expect(ttydWebSocketUrl("demo")).toBe(
+      `ws://${mainContainerName("demo")}:7681${ttydBasePath("demo")}/ws`,
+    );
   });
 });
