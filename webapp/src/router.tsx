@@ -4,7 +4,12 @@ import { routeTree } from "./routeTree.gen";
 export function getRouter() {
   return createRouter({
     routeTree,
-    defaultErrorComponent: () => <div>Internal Server Error</div>,
-    defaultNotFoundComponent: () => <div>Not Found</div>,
+    // Every navigation runs through the View Transitions API
+    // (document.startViewTransition) for list→detail morphs (#16). Firefox,
+    // which lacks the API, degrades to instant swaps.
+    defaultViewTransition: true,
+    scrollRestoration: true,
+    defaultErrorComponent: () => <div style={{ padding: 24 }}>Internal Server Error</div>,
+    defaultNotFoundComponent: () => <div style={{ padding: 24 }}>Not Found</div>,
   });
 }
