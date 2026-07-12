@@ -6,6 +6,7 @@ import {
   mainContainerName,
   toSessionContainer,
   ttydBasePath,
+  ttydWebSocketUrl,
 } from "./container-mapping";
 
 describe("container name derivation", () => {
@@ -78,5 +79,19 @@ describe("toSessionContainer", () => {
 describe("ttydBasePath", () => {
   it("matches the agent image CMD base path", () => {
     expect(ttydBasePath("demo")).toBe("/api/sessions/demo/terminal");
+  });
+});
+
+describe("ttydWebSocketUrl", () => {
+  it("targets the agent container's ttyd socket on the compose network", () => {
+    expect(ttydWebSocketUrl("demo")).toBe(
+      "ws://cc-remote-session-demo:7681/api/sessions/demo/terminal/ws",
+    );
+  });
+
+  it("stays composed from the container name and base path (single source of truth)", () => {
+    expect(ttydWebSocketUrl("demo")).toBe(
+      `ws://${mainContainerName("demo")}:7681${ttydBasePath("demo")}/ws`,
+    );
   });
 });
