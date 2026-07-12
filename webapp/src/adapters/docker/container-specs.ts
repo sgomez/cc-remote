@@ -5,7 +5,7 @@
 // result to dockerode. No domain decisions — those already happened in core.
 
 import type Docker from "dockerode";
-import type { CloneContainerSpec, SessionContainerSpec } from "../../core";
+import type { CloneContainerSpec, LoginContainerSpec, SessionContainerSpec } from "../../core";
 import {
   ACCOUNT_CONFIG_DIR_ENV,
   ACCOUNT_CONFIG_MOUNT,
@@ -14,7 +14,12 @@ import {
   HOST_CLAUDE_JSON,
   WORKSPACE_MOUNT,
 } from "./config";
-import { cloneContainerName, mainContainerName } from "./container-mapping";
+import {
+  cloneContainerName,
+  loginContainerName,
+  loginTerminalBasePath,
+  mainContainerName,
+} from "./container-mapping";
 
 /**
  * Relative path (inside an Account Config Volume) whose appearance signals a
@@ -99,6 +104,44 @@ export function buildSessionCreateOptions(
     Env: mergeEnv(infra, spec.env),
     Labels: spec.labels,
     HostConfig: baseHostConfig(config, binds),
+  };
+}
+
+/**
+ * Login Container (#14). The image default ENTRYPOINT (entrypoint.sh) still
+ * runs — it symlinks `~/.claude(.json)` into the mounted Account Config Volume
+ * (`ACCOUNT_CONFIG_DIR`), so credentials the login writes persist to the volume
+ * where `hasCredentials` polls. The default CMD is REPLACED with a ttyd bound to
+ * the login base path so the WS proxy (#15) can reach it. It mounts ONLY the
+ * config volume — no workspace, no repo, and crucially no GITHUB_TOKEN — so
+ * nothing but the interactive `claude` login can happen inside. Ephemeral: no
+ * restart policy (once login completes the poll destroys it).
+ */
+export function buildLoginCreateOptions(
+  spec: LoginContainerSpec,
+  config: DockerAdapterConfig,
+): Docker.ContainerCreateOptions {
+  const env = infraEnv(config);
+  env[ACCOUNT_CONFIG_DIR_ENV] = ACCOUNT_CONFIG_MOUNT;
+
+  const ttyd =
+    `ttyd -p 7681 --base-path ${loginTerminalBasePath(spec.accountId)} ` +
+    "-W /usr/local/bin/console-entrypoint.sh";
+
+  return {
+    name: loginContainerName(spec.accountId),
+    Image: config.agentImage,
+    Tty: true,
+    OpenStdin: true,
+    Cmd: ["sh", "-c", ttyd],
+    Env: toEnvArray(env),
+    Labels: spec.labels,
+    HostConfig: {
+      Binds: [`${spec.accountConfigVolume}:${ACCOUNT_CONFIG_MOUNT}`],
+      SecurityOpt: ["no-new-privileges:true"],
+      PidsLimit: config.pidsLimit,
+      NetworkMode: config.network,
+    },
   };
 }
 

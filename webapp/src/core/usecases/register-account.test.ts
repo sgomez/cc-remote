@@ -71,7 +71,7 @@ describe("register-account", () => {
     expect(account.config).toEqual({ baseUrl: "https://llm.example.com", model: "m1" });
   });
 
-  it("registers an oauth account as pending_login with a seeded volume", async () => {
+  it("registers an oauth account as pending_login with a seeded volume and Login Container", async () => {
     const account = await ctx.register({
       providerType: "claude",
       displayName: "Work Claude",
@@ -79,6 +79,20 @@ describe("register-account", () => {
     });
     expect(account.status).toBe("pending_login");
     expect(ctx.engine.hasVolume(accountConfigVolumeName(account.id))).toBe(true);
+    // A running, labelled Login Container mounting the account's volume (#14).
+    expect(ctx.engine.hasLoginContainer(account.id)).toBe(true);
+    const spec = ctx.engine.runLoginSpecs.at(-1);
+    expect(spec?.accountConfigVolume).toBe(accountConfigVolumeName(account.id));
+    expect(spec?.labels["cc-remote-login"]).toBe("true");
+  });
+
+  it("starts NO Login Container for an api-key account", async () => {
+    const account = await ctx.register({
+      providerType: "deepseek",
+      displayName: "ds",
+      fields: { apiKey: "sk" },
+    });
+    expect(ctx.engine.hasLoginContainer(account.id)).toBe(false);
   });
 
   it("registers a host-mount account ready with NO volume", async () => {

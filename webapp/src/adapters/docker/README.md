@@ -11,10 +11,11 @@ calls.
 | File | Responsibility |
 |------|----------------|
 | `config.ts` | `DockerAdapterConfig` + `configFromEnv` — deployment facts (image, network, PUID/PGID, hardening limits, host Claude paths) and the mount-point constants. Pure. |
-| `container-mapping.ts` | Container-name derivation, the `cc-remote-session` label guard, label→`SessionContainer` mapping, and `ttydBasePath`. Pure, TDD'd. |
-| `container-specs.ts` | Build dockerode `ContainerCreateOptions` for the main/clone/seed/credential-probe containers. All the mount + env branching. Pure, TDD'd. |
+| `container-mapping.ts` | Container-name derivation, the `cc-remote-session` / `cc-remote-login` label guards, label→`SessionContainer`/`LoginContainer` mapping, and `ttydBasePath` / `loginTerminalBasePath`. Pure, TDD'd. |
+| `container-specs.ts` | Build dockerode `ContainerCreateOptions` for the main/clone/login/seed/credential-probe containers. All the mount + env branching. Pure, TDD'd. |
 | `docker-container-engine.ts` | `DockerContainerEngine implements ContainerEngine` — thin dockerode calls around the builders. Validated by the integration test, not CI. |
 | `graceful-shutdown.ts` | `stopRunningSessions` / `registerGracefulShutdown` — SIGTERM stops running Sessions (legacy behaviour). Tested against the core fake. |
+| `login-poller.ts` | `startLoginPoller` — recover-on-start + interval poll that drives the Login Container state machine (#14). Pure orchestration over core use cases; tested against the core fakes with fake timers. |
 
 The domain owns every decision (seeding JSON, status synthesis, which volume to
 mount); this adapter only reports raw facts (containers, labels, exit codes) and
@@ -57,6 +58,27 @@ claude-local Sessions — building such a spec throws.
 This is the only `entrypoint.sh` change (the PRD forbids others); the shared
 `ttydBasePath` constant is the single source of truth for the terminal base path
 (`/api/sessions/<name>/terminal`) the WS proxy (#15) must match.
+
+## Login Container flow (#14)
+
+Registering an `oauth` (`claude`) Account leaves it `pending_login` and starts a
+**Login Container** `cc-remote-login-<account-id>`: the agent image, mounting
+**only** that Account's config volume (no workspace, no repo, no `GITHUB_TOKEN`),
+with its default CMD replaced by a ttyd bound to `loginTerminalBasePath`
+(`/api/accounts/<id>/login/terminal`, the login analogue of `ttydBasePath`, which
+the WS proxy #15 must match). It carries the `cc-remote-login=true` marker — a
+separate guard from `cc-remote-session`, so `listSessionContainers` never
+surfaces it.
+
+The entrypoint's `ACCOUNT_CONFIG_DIR` symlinks make the interactive `claude`
+login write its credentials into the volume; `hasCredentials` polls for
+`CREDENTIALS_MARKER`. All the state-machine logic lives in `src/core` use cases
+(`start-login`, `check-login`, `poll-logins`, `recover-logins`); this adapter
+only supplies the container primitives (`runLoginContainer` / `getLoginContainer`
+/ `listLoginContainers` / `removeLoginContainer`) and `startLoginPoller`, which
+runs one recovery pass on boot (rediscover orphaned containers by label / flip
+logins that completed while down) then polls on an interval. The DB never stores
+Claude credentials — the volume is the only credential store.
 
 ## Environment
 

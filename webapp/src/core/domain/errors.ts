@@ -54,6 +54,15 @@ export class AccountInUseError extends DomainError {
   }
 }
 
+export class LoginNotSupportedError extends DomainError {
+  constructor(id: string) {
+    super(
+      "login_not_supported",
+      `Account ${id} is not an OAuth account; it has no Login Container flow.`,
+    );
+  }
+}
+
 export class CredentialsNotFoundError extends DomainError {
   constructor(id: string) {
     super(

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CloneContainerSpec, SessionContainerSpec } from "../../core";
+import type { CloneContainerSpec, LoginContainerSpec, SessionContainerSpec } from "../../core";
 import { ACCOUNT_CONFIG_DIR_ENV, ACCOUNT_CONFIG_MOUNT, type DockerAdapterConfig } from "./config";
 import {
   buildCloneCreateOptions,
   buildHasCredentialsCreateOptions,
+  buildLoginCreateOptions,
   buildSeedCreateOptions,
   buildSessionCreateOptions,
   CREDENTIALS_MARKER,
@@ -31,6 +32,55 @@ const sessionSpec: SessionContainerSpec = {
   accountConfigVolume: "cc-remote-account-acc-1",
   remoteControl: false,
 };
+
+const loginSpec: LoginContainerSpec = {
+  accountId: "acc-1",
+  accountConfigVolume: "cc-remote-account-acc-1",
+  labels: { "cc-remote-login": "true", "cc-remote-account-id": "acc-1" },
+};
+
+describe("buildLoginCreateOptions", () => {
+  const opts = buildLoginCreateOptions(loginSpec, config);
+
+  it("names the login container from the account id", () => {
+    expect(opts.name).toBe("cc-remote-login-acc-1");
+    expect(opts.Image).toBe("cc-remote-claude-agent");
+    expect(opts.Tty).toBe(true);
+    expect(opts.OpenStdin).toBe(true);
+  });
+
+  it("mounts ONLY the Account Config Volume and stages it for entrypoint linking", () => {
+    expect(opts.HostConfig?.Binds).toEqual([`cc-remote-account-acc-1:${ACCOUNT_CONFIG_MOUNT}`]);
+    expect(opts.Env).toContain(`${ACCOUNT_CONFIG_DIR_ENV}=${ACCOUNT_CONFIG_MOUNT}`);
+  });
+
+  it("injects NO GITHUB_TOKEN, repo, or domain provider env", () => {
+    const env = opts.Env ?? [];
+    expect(env.some((e) => e.startsWith("GITHUB_TOKEN="))).toBe(false);
+    expect(env.some((e) => e.startsWith("GITHUB_REPO="))).toBe(false);
+    expect(env.some((e) => e.startsWith("ANTHROPIC_"))).toBe(false);
+  });
+
+  it("overrides the CMD with a ttyd bound to the login terminal base path", () => {
+    expect(opts.Cmd?.[0]).toBe("sh");
+    const cmd = (opts.Cmd ?? []).join(" ");
+    expect(cmd).toContain("ttyd -p 7681");
+    expect(cmd).toContain("--base-path /api/accounts/acc-1/login/terminal");
+    expect(cmd).toContain("console-entrypoint.sh");
+  });
+
+  it("carries hardening + network but no restart policy (ephemeral)", () => {
+    expect(opts.HostConfig?.SecurityOpt).toEqual(["no-new-privileges:true"]);
+    expect(opts.HostConfig?.PidsLimit).toBe(4096);
+    expect(opts.HostConfig?.NetworkMode).toBe("cc-remote_default");
+    expect(opts.HostConfig?.RestartPolicy).toBeUndefined();
+  });
+
+  it("labels it as a Login Container so session listings exclude it", () => {
+    expect(opts.Labels?.["cc-remote-login"]).toBe("true");
+    expect(opts.Labels?.["cc-remote-session"]).toBeUndefined();
+  });
+});
 
 describe("buildSessionCreateOptions — config-volume account", () => {
   const opts = buildSessionCreateOptions(sessionSpec, config);

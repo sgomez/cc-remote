@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { SESSION_LABELS } from "../../core";
+import { LOGIN_LABELS, SESSION_LABELS } from "../../core";
 import {
   cloneContainerName,
+  isLoginLabelled,
   isSessionLabelled,
+  loginContainerName,
+  loginTerminalBasePath,
   mainContainerName,
+  toLoginContainer,
   toSessionContainer,
   ttydBasePath,
 } from "./container-mapping";
@@ -78,5 +82,31 @@ describe("toSessionContainer", () => {
 describe("ttydBasePath", () => {
   it("matches the agent image CMD base path", () => {
     expect(ttydBasePath("demo")).toBe("/api/sessions/demo/terminal");
+  });
+});
+
+describe("login container mapping", () => {
+  it("names the login container from the account id", () => {
+    expect(loginContainerName("acc-1")).toBe("cc-remote-login-acc-1");
+  });
+
+  it("guards on the login marker, distinct from the session marker", () => {
+    expect(isLoginLabelled({ [LOGIN_LABELS.marker]: "true" })).toBe(true);
+    expect(isLoginLabelled({ [SESSION_LABELS.marker]: "true" })).toBe(false);
+    expect(isLoginLabelled({})).toBe(false);
+    expect(isLoginLabelled(undefined)).toBe(false);
+    expect(isLoginLabelled(null)).toBe(false);
+  });
+
+  it("reads the account id from labels and passes state through", () => {
+    const lc = toLoginContainer({
+      labels: { [LOGIN_LABELS.marker]: "true", [LOGIN_LABELS.accountId]: "acc-1" },
+      state: "running",
+    });
+    expect(lc).toEqual({ accountId: "acc-1", state: "running" });
+  });
+
+  it("exposes a login terminal base path mirroring the session one", () => {
+    expect(loginTerminalBasePath("acc-1")).toBe("/api/accounts/acc-1/login/terminal");
   });
 });

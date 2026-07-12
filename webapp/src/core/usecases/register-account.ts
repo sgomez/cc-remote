@@ -5,6 +5,7 @@
 import type { Account } from "../domain/account";
 import { accountConfigVolumeName, ownsConfigVolume } from "../domain/account";
 import { MissingAccountFieldError, SingletonAccountExistsError } from "../domain/errors";
+import { buildLoginLabels } from "../domain/login";
 import { requireProviderType } from "../domain/provider-type";
 import { ACCOUNT_CONFIG_FILE, wizardSkipConfig } from "../domain/seeding";
 import type { AccountRepository } from "../ports/account-repository";
@@ -78,6 +79,16 @@ export function makeRegisterAccount(deps: RegisterAccountDeps) {
         ACCOUNT_CONFIG_FILE,
         JSON.stringify(wizardSkipConfig(permissionMode), null, 2),
       );
+    }
+
+    if (type.seeding === "oauth") {
+      // Spin up the Login Container so the user can complete the interactive
+      // `claude` login; the background poll flips the Account to `ready` (#14).
+      await deps.engine.runLoginContainer({
+        accountId: account.id,
+        accountConfigVolume: accountConfigVolumeName(account.id),
+        labels: buildLoginLabels({ accountId: account.id }),
+      });
     }
 
     return account;

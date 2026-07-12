@@ -54,6 +54,21 @@ describe("delete-account", () => {
     expect(engine.hasVolume(accountConfigVolumeName("acc-1"))).toBe(false);
   });
 
+  it("destroys the Login Container and volume of a pending_login account", async () => {
+    accounts = new FakeAccountRepository([
+      account({ id: "acc-1", providerType: "claude", credentials: {}, status: "pending_login" }),
+    ]);
+    del = makeDeleteAccount({ accounts, engine });
+    engine.createVolume(accountConfigVolumeName("acc-1"));
+    engine.seedLoginContainer("acc-1");
+
+    await del({ accountId: "acc-1" });
+
+    expect(await accounts.findById("acc-1")).toBeNull();
+    expect(engine.hasLoginContainer("acc-1")).toBe(false);
+    expect(engine.hasVolume(accountConfigVolumeName("acc-1"))).toBe(false);
+  });
+
   it("ignores sessions of OTHER accounts", async () => {
     engine.seedRunningSession({ name: "other", repo: "o/r", accountId: "acc-2" });
     await del({ accountId: "acc-1" });

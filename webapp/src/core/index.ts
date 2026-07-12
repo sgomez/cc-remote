@@ -6,6 +6,8 @@
 export type { Account, AccountStatus } from "./domain/account";
 export { accountConfigVolumeName, ownsConfigVolume } from "./domain/account";
 export * from "./domain/errors";
+export type { LoginContainer } from "./domain/login";
+export { buildLoginLabels, LOGIN_LABELS } from "./domain/login";
 export type { FieldSpec, ProviderType, SeedingMethod } from "./domain/provider-type";
 export {
   findProviderType,
@@ -28,17 +30,26 @@ export type { Clock } from "./ports/clock";
 export type {
   CloneContainerSpec,
   ContainerEngine,
+  LoginContainerSpec,
   SessionContainerSpec,
 } from "./ports/container-engine";
 export type { IdGenerator } from "./ports/id-generator";
 
 // Use cases
+export {
+  type CheckLoginInput,
+  type CheckLoginResult,
+  makeCheckLogin,
+} from "./usecases/check-login";
 export { type CreateSessionInput, makeCreateSession } from "./usecases/create-session";
 export { type DeleteAccountInput, makeDeleteAccount } from "./usecases/delete-account";
 export { type DestroySessionInput, makeDestroySession } from "./usecases/destroy-session";
 export { makeListSessions } from "./usecases/list-sessions";
 export { type MarkAccountReadyInput, makeMarkAccountReady } from "./usecases/mark-account-ready";
+export { makePollLogins } from "./usecases/poll-logins";
+export { makeRecoverLogins } from "./usecases/recover-logins";
 export { makeRegisterAccount, type RegisterAccountInput } from "./usecases/register-account";
 export { makeResetSession, type ResetSessionInput } from "./usecases/reset-session";
+export { makeStartLogin, type StartLoginInput } from "./usecases/start-login";
 export { makeStartSession, type StartSessionInput } from "./usecases/start-session";
 export { makeStopSession, type StopSessionInput } from "./usecases/stop-session";
