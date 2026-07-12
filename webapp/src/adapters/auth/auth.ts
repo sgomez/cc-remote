@@ -22,8 +22,8 @@ db.pragma("journal_mode = WAL");
 
 export const auth = betterAuth({
   database: db,
-  // Stable across restarts, or every restart invalidates all sessions — the
-  // better-auth analogue of the legacy JWT_SECRET note (CLAUDE.md).
+  // Stable across restarts, or every restart invalidates all sessions
+  // (see the Auth section in AGENTS.md / CLAUDE.md).
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
   user: {

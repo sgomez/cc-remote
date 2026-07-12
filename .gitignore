@@ -14,7 +14,3 @@ workspace/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Providers & Sessions configuration (sensitive API keys / dynamic mounts)
-providers.json
-.sessions_config/

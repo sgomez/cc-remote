@@ -48,10 +48,10 @@ if [ $? -eq 0 ] && [ -f .env ]; then
     echo "{}" > "$CLAUDE_JSON_PATH"
   fi
 
-  # NOTE: providers.json / .sessions_config are gone (issue #17). The new
-  # web-manager stores Accounts and settings in SQLite (a Docker named volume,
-  # cc-remote-db) and Sessions live purely as labelled Docker containers.
-  # Accounts are created in the web UI, not the setup wizard.
+  # NOTE: the legacy per-provider config file and session config dir are gone.
+  # The web-manager stores Accounts and settings in SQLite (a Docker named
+  # volume, cc-remote-db) and Sessions live purely as labelled Docker
+  # containers. Accounts are created in the web UI, not the setup wizard.
 
   # Prompt to run container
   echo ""

@@ -1,7 +1,7 @@
 /*
  * cc-remote webapp design system (#16).
  *
- * Foundations are the LEGACY tokens from web/public/index.css on branch
+ * Foundations are the LEGACY tokens from the previous web-manager UI on branch
  * feat/providers-and-console (Outfit, #0b0f19 bg, indigo #6366f1 + glows, glass
  * cards, radii 8/16/24, gradient primary buttons, cubic-bezier transitions) —
  * the single design language. Layout/IA (left sidebar shell, card lists,
@@ -9,7 +9,7 @@
  * prototype, restyled onto these tokens. No second design language is imported.
  */
 
-/* ---- tokens (legacy web/public/index.css) -------------------------------- */
+/* ---- tokens (legacy web-manager UI) -------------------------------------- */
 :root {
   --font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
