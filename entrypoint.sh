@@ -43,6 +43,24 @@ if [ -n "$GIT_USER_EMAIL" ]; then
     git config --global user.email "$GIT_USER_EMAIL"
 fi
 
+# Account Config Volume (api-key / oauth accounts): the whole volume is bind-mounted
+# at $ACCOUNT_CONFIG_DIR (see webapp src/adapters/docker), holding both the account's
+# .claude/ dir and .claude.json. Link ~/.claude and ~/.claude.json into it so writes
+# (e.g. OAuth credentials from a Login Container) persist to the volume and the seeded
+# wizard-skip .claude.json is picked up. claude-local (host-mount) leaves this unset and
+# bind-mounts the host config directly instead.
+if [ -n "$ACCOUNT_CONFIG_DIR" ]; then
+    echo " [Info] Linking Claude config to Account Config Volume at $ACCOUNT_CONFIG_DIR"
+    mkdir -p "$ACCOUNT_CONFIG_DIR/.claude"
+    # Replace the image's default ~/.claude (an empty dir) and any stale
+    # ~/.claude.json with symlinks into the mounted volume, so every write
+    # (OAuth credentials from a Login Container, session state) persists to the
+    # volume rather than the container's ephemeral layer.
+    rm -rf "/home/node/.claude" "/home/node/.claude.json"
+    ln -s "$ACCOUNT_CONFIG_DIR/.claude" "/home/node/.claude"
+    ln -s "$ACCOUNT_CONFIG_DIR/.claude.json" "/home/node/.claude.json"
+fi
+
 # Restore Claude session file if it doesn't exist but a backup is available
 if [ ! -f "/home/node/.claude.json" ]; then
     # Look for the most recent backup in the mounted .claude config directory
