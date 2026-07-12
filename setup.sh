@@ -48,16 +48,11 @@ if [ $? -eq 0 ] && [ -f .env ]; then
     echo "{}" > "$CLAUDE_JSON_PATH"
   fi
 
-  if [ ! -f "providers.json" ]; then
-    echo -e " [Info] Creating providers storage file: ${BLUE}providers.json${NC}"
-    echo "[]" > "providers.json"
-  fi
+  # NOTE: providers.json / .sessions_config are gone (issue #17). The new
+  # web-manager stores Accounts and settings in SQLite (a Docker named volume,
+  # cc-remote-db) and Sessions live purely as labelled Docker containers.
+  # Accounts are created in the web UI, not the setup wizard.
 
-  if [ ! -d ".sessions_config" ]; then
-    echo -e " [Info] Creating sessions config directory: ${BLUE}.sessions_config${NC}"
-    mkdir -p ".sessions_config"
-  fi
-  
   # Prompt to run container
   echo ""
   echo -e -n "${GREEN}Do you want to build and start the Docker container now?${NC} [Y/n]: "

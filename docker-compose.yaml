@@ -44,38 +44,55 @@ services:
     # No ports are published to the host; only reachable from other services on the
     # compose network (e.g. web-manager via DOCKER_HOST=tcp://docker-socket-proxy:2375).
 
+  # New web-manager: the TanStack Start + Nitro app (webapp/), replacing the
+  # legacy Express service (web/). ONE service, ONE Caddy upstream — it serves
+  # static + SSR + API + SSE + WS on port 4000, so Caddy needs no WebSocket
+  # stanza (it proxies upgrades by default). Runs unprivileged: it reaches Docker
+  # only through docker-socket-proxy over TCP, never a mounted socket.
+  #
+  # To roll back to the legacy service while web/ still exists (until #18):
+  #   git checkout <previous-commit> -- docker-compose.yaml
+  # and recreate providers.json / .sessions_config (see git history of setup.sh).
   web-manager:
-    build: ./web
+    build: ./webapp
+    image: cc-remote-web-manager
     restart: unless-stopped
-    user: "0:0"
-    ports:
-      - "127.0.0.1:${WEB_PORT:-4000}:4000"
     depends_on:
       - docker-socket-proxy
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${WEB_PORT:-4000}:4000"
     environment:
-      - WEB_PORT=4000
+      - PORT=4000
+      # Auth (better-auth): base URL, stable signing secret, GitHub OAuth app,
+      # fail-closed allow-list. BETTER_AUTH_SECRET replaces the legacy JWT_SECRET.
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       - ALLOWED_GITHUB_USERS=${ALLOWED_GITHUB_USERS}
-      # NOTE: CLAUDE_CONFIG_PATH and CLAUDE_JSON_PATH are shared read-write between the
-      # host and all agent sessions, so a compromised session can alter the host's Claude
-      # config. This is an accepted tradeoff for sharing auth across sessions.
-      - CLAUDE_CONFIG_PATH=${CLAUDE_CONFIG_PATH}
-      - CLAUDE_JSON_PATH=${CLAUDE_JSON_PATH}
+      # Docker adapter: reach the daemon via the proxy; created sibling agent
+      # containers join THIS compose network so the WS proxy can dial them by name.
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+      - AGENT_IMAGE=cc-remote-claude-agent
+      - AGENT_NETWORK=cc-remote
+      - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
+      - PERMISSION_MODE=${PERMISSION_MODE:-auto}
       - GIT_USER_NAME=${GIT_USER_NAME}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      - PERMISSION_MODE=${PERMISSION_MODE:-auto}
-      - AGENT_IMAGE=cc-remote-claude-agent
-      - DOCKER_HOST=tcp://docker-socket-proxy:2375
-      - JWT_SECRET=${JWT_SECRET:-}
-      - BASE_URL=${BASE_URL:-}
-      - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
-      - PROJECT_PATH=${PROJECT_PATH}
+      # SQLite (domain + better-auth tables) on a persisted named volume so
+      # Accounts and auth sessions survive `docker compose down && up`.
+      - DATABASE_PATH=/data/cc-remote.db
+      # Optional claude-local host paths — passed to agent containers as bind
+      # SOURCES (resolved on the host, NOT mounted into web-manager). Empty when
+      # the deployment is API-key-only; the app then simply offers no claude-local.
+      - CLAUDE_CONFIG_PATH=${CLAUDE_CONFIG_PATH:-}
+      - CLAUDE_JSON_PATH=${CLAUDE_JSON_PATH:-}
     volumes:
-      - ./providers.json:/app/providers.json
-      - ./.sessions_config:/app/.sessions_config
+      - cc-remote-db:/data
 
   caddy:
     image: caddy:2
@@ -94,11 +111,14 @@ services:
     depends_on:
       - web-manager
 
+# Deterministic network name (independent of the compose project/dir name) so
+# the Docker adapter can attach created agent containers to it via AGENT_NETWORK.
+networks:
+  default:
+    name: cc-remote
+
 volumes:
   caddy_data:
   caddy_config:
-
-
-
-
-
+  # SQLite database + WAL sidecars (Accounts, settings, better-auth sessions).
+  cc-remote-db:

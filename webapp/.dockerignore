@@ -1,0 +1,14 @@
+# Never copy install/build artifacts or the local DB into the build context —
+# deps are reinstalled and the output rebuilt inside the image, and the SQLite
+# file holds plaintext credentials.
+node_modules
+.output
+.nitro
+.tanstack
+data
+*.db
+*.db-wal
+*.db-shm
+src/routeTree.gen.ts
+*.tsbuildinfo
+.DS_Store

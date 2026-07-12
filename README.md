@@ -142,20 +142,30 @@ Click the provided URL, sign in with your Anthropic account, copy the authentica
 
 ## Web Manager & Multi-Session Portal
 
-The project features a built-in web management interface (`web-manager` service) proxy-routed securely behind Caddy. It allows you to dynamically spin up, start, stop, and destroy Claude Code container sessions from your browser. Each session gets its own isolated Docker volume and workspace sandbox.
+The project features a built-in web management interface (`web-manager` service) proxy-routed securely behind Caddy. It allows you to dynamically spin up, start, stop, and destroy Claude Code container sessions from your browser, each with a built-in web terminal. Each session gets its own isolated Docker volume and workspace sandbox.
+
+The `web-manager` is a self-contained TanStack Start + Nitro app (`webapp/`) built into a single Node 24 image serving the UI, API, SSE status streams and the terminal WebSocket proxy on one port (4000).
+
+### Deployment flow
+
+1. `./setup.sh` — the wizard collects **infrastructure** only (domain, GitHub OAuth app, allow-list, optional claude-local paths, PUID/PGID) and compiles `.env`. It generates a stable `BETTER_AUTH_SECRET`. It does **not** ask about providers/accounts — those are created later in the UI.
+2. `docker compose up -d --build` — brings up `caddy` + `docker-socket-proxy` + `web-manager`. On start the container validates its environment (failing fast and listing every problem if misconfigured) and applies database migrations idempotently.
+3. Open the web UI, sign in with GitHub, and **create Accounts** (API-key providers like DeepSeek/custom, an OAuth `claude` Account, or the optional `claude-local` singleton). Then create Sessions against an Account.
+
+Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote-db` Docker volume, so they survive `docker compose down && up`. Per-Account Claude configuration lives in its own `cc-remote-account-<id>` volume. `providers.json` no longer exists.
 
 ### Accessing the Web Manager
 
 1. Open your browser and navigate to `https://<your-vps-domain>` (or `http://localhost:4000` for local test environments).
 2. Click **Sign In with GitHub**.
-3. Authorize the application. The backend will verify if your GitHub username is configured in the whitelisted `ALLOWED_GITHUB_USERS` environment variable. If so, a secure signed session cookie is created.
+3. Authorize the application. The backend verifies your GitHub username against the whitelisted `ALLOWED_GITHUB_USERS` (fail-closed: an empty list denies everyone). If allowed, a secure session cookie is created.
 
 ### Sibling Container Architecture
 
 To avoid heavy nesting, performance hits, and security vulnerabilities associated with Docker-in-Docker (DinD), this project uses a **Sibling Containers** architecture:
-- The `web-manager` container mounts the host's `/var/run/docker.sock`.
-- When you click "Launch Container", the web manager calls the Docker API to create and start a sibling container running the `cc-remote-claude-agent` image.
-- Claude credentials (`~/.claude.json` and `~/.claude`) are safely mounted from the host, allowing all dynamically spawned containers to share the same authentication state.
+- The `web-manager` container never mounts the raw Docker socket. It talks to the host daemon through the read-only `docker-socket-proxy` over TCP (`tcp://docker-socket-proxy:2375`), and therefore runs unprivileged.
+- When you create a Session, the web manager calls the Docker API to create and start a sibling container running the `cc-remote-claude-agent` image, joined to the same `cc-remote` network so the terminal WebSocket proxy can reach it.
+- Claude credentials come from the Session's **Account Config Volume** (API-key seeding or an OAuth login). `claude-local` is optional: only when configured does a Session bind-mount the host's `~/.claude` / `~/.claude.json`. A deployment with no host Claude config runs cleanly in API-key-only mode.
 
 ### Session Workspace Lifecycle
 
