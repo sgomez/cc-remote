@@ -1,0 +1,33 @@
+{
+  "name": "cc-remote-webapp",
+  "private": true,
+  "type": "module",
+  "description": "cc-remote web-manager rewrite: TanStack Start + Nitro (ports & adapters).",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
+    "test": "vitest run",
+    "lint": "biome check",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.168.8",
+    "@tanstack/react-start": "^1.168.27",
+    "nitro": "latest",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@types/node": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.5.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^5.9.2",
+    "vite": "latest",
+    "vitest": "^3.0.0"
+  }
+}

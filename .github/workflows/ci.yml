@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "webapp/**"
+      - ".github/workflows/ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "webapp/**"
+      - ".github/workflows/ci.yml"
+
+jobs:
+  webapp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (Biome)
+        run: pnpm lint
+
+      # Build first: the TanStack Start vite plugin generates src/routeTree.gen.ts
+      # here, which `tsc --noEmit` then type-checks. No Docker / no E2E in CI.
+      - name: Build (vite)
+        run: pnpm build
+
+      - name: Typecheck (tsc --noEmit)
+        run: pnpm check
+
+      - name: Test (vitest)
+        run: pnpm test
