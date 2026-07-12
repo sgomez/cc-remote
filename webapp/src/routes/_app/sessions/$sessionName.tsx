@@ -85,7 +85,7 @@ function SessionDetailPage() {
               className="btn"
               onClick={() => run(() => resetSession({ data: { name: session.name } }))}
             >
-              retry clone
+              Retry clone
             </button>
           </div>
         </div>
@@ -125,7 +125,7 @@ function SessionDetailPage() {
 
       <div className="actions">
         <Link to="/sessions" className="btn">
-          ← back
+          ← Back
         </Link>
         <span className="spacer" />
         {actions.canStop && (
@@ -134,7 +134,7 @@ function SessionDetailPage() {
             className="btn"
             onClick={() => run(() => stopSession({ data: { name: session.name } }))}
           >
-            stop
+            Stop
           </button>
         )}
         {actions.canStart && (
@@ -143,7 +143,7 @@ function SessionDetailPage() {
             className="btn"
             onClick={() => run(() => startSession({ data: { name: session.name } }))}
           >
-            start
+            Start
           </button>
         )}
         {actions.canReset && (
@@ -158,7 +158,7 @@ function SessionDetailPage() {
               )
             }
           >
-            reset
+            Reset
           </button>
         )}
         <button
@@ -171,7 +171,7 @@ function SessionDetailPage() {
             }, `Destroy "${session.name}"? This removes the container and its workspace volume permanently.`)
           }
         >
-          destroy
+          Destroy
         </button>
       </div>
     </>

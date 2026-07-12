@@ -33,13 +33,10 @@ function SessionsPage() {
           <h1>
             <span className="path">~/</span>sessions
           </h1>
-          <p className="subtle">
-            One agent container + workspace volume each. Docker is the source of truth — this list
-            is what the labels say exists.
-          </p>
+          <p className="subtle">One agent container and workspace volume per session.</p>
         </div>
         <Link to="/sessions/new" className="btn primary" aria-disabled={!hasReadyAccount}>
-          + new session
+          + New session
         </Link>
       </div>
 

@@ -39,7 +39,7 @@ function AccountsPage() {
           </p>
         </div>
         <Link to="/accounts/new" search={{ type: undefined }} className="btn primary">
-          + add account
+          + Add account
         </Link>
       </div>
 

@@ -167,20 +167,13 @@ code.inline {
   padding: 1px 9px;
 }
 
-.sidebar-footer {
-  margin-top: auto;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-
 .sidebar-user {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--card-border);
-  margin-top: 14px;
+  margin-top: auto;
   font-size: 0.8rem;
 }
 
@@ -189,6 +182,13 @@ code.inline {
   min-width: 0;
   padding: 40px clamp(20px, 5vw, 56px);
   max-width: 1100px;
+}
+
+/* Mobile top bar + drawer scrim — hidden on desktop, activated in the
+   max-720 media query where the sidebar becomes an off-canvas drawer. */
+.topbar,
+.sidebar-overlay {
+  display: none;
 }
 
 /* ---- page header --------------------------------------------------------- */
@@ -454,7 +454,10 @@ code.inline {
   margin-bottom: 8px;
   color: var(--text-muted);
 }
-.field input,
+/* Text inputs and selects span the field. Radios/checkboxes are excluded so the
+   global full-width rule doesn't stretch them (that pushed the account picker's
+   radio onto its own full-width row above the label). */
+.field input:not([type="radio"]):not([type="checkbox"]),
 .field select {
   width: 100%;
   background: rgba(15, 23, 42, 0.6);
@@ -467,7 +470,7 @@ code.inline {
   transition: var(--transition);
   outline: none;
 }
-.field input:focus,
+.field input:not([type="radio"]):not([type="checkbox"]):focus,
 .field select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-glow);
@@ -568,6 +571,13 @@ code.inline {
 .radio-card.selected {
   border-color: var(--success);
   box-shadow: 0 0 0 3px var(--success-glow);
+}
+.radio-card input[type="radio"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
 }
 
 /* ---- pairing (remote control) -------------------------------------------- */
@@ -690,37 +700,83 @@ code.inline {
   }
 }
 
-/* ---- responsive: sidebar collapses to a top bar -------------------------- */
+/* ---- responsive: sidebar becomes a burger-triggered drawer --------------- */
 @media (max-width: 720px) {
   .shell {
     flex-direction: column;
   }
-  .sidebar {
-    width: 100%;
-    height: auto;
-    position: static;
-    flex-direction: row;
+  .topbar {
+    display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 18px;
-    border-right: none;
+    gap: 12px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--card-border);
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    position: sticky;
+    top: 0;
+    z-index: 30;
   }
-  .brand {
+  .topbar .brand {
     margin-bottom: 0;
   }
-  .sidebar-footer {
-    display: none;
-  }
-  .sidebar-user {
-    flex-direction: row;
+  .burger {
+    display: inline-flex;
     align-items: center;
-    border-top: none;
-    padding-top: 0;
-    margin-top: 0;
-    margin-left: auto;
+    justify-content: center;
+    padding: 6px;
+    background: transparent;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-color);
+    cursor: pointer;
+  }
+  /* Off-canvas drawer: keeps the desktop column layout, slides in on `.open`. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    width: min(260px, 82vw);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    border-right: 1px solid var(--card-border);
+    /* Don't let the view transition snapshot the transformed drawer. */
+    view-transition-name: none;
+  }
+  .sidebar.open {
+    transform: none;
+  }
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    padding: 0;
+    border: none;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
   }
   .main {
-    padding: 28px 20px;
+    padding: 24px 12px;
+  }
+  .panel {
+    padding: 16px 12px;
+  }
+  /* Terminal breaks out of the main + panel padding to span the full viewport
+     width (full-bleed): the containing blocks are centred, so margin-left:50%
+     + translateX(-50%) at 100vw lands the terminal edge-to-edge. */
+  .terminal {
+    width: 100vw;
+    margin-left: 50%;
+    transform: translateX(-50%);
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+  }
+  .terminal-mount {
+    padding: 4px;
   }
 }

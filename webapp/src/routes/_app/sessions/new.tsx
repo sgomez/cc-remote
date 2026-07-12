@@ -1,13 +1,15 @@
 // New-session flow (#16): repo + Account → two-phase provision (clone helper →
 // agent container). The Account picker is radio cards with `pending_login`
 // accounts greyed out (shown, not hidden). The repo is entered as `owner/name`
-// (validated against the domain repo shape) — there is no GitHub repo-list API
-// in this issue's scope. On submit the create-session use case runs server-side
-// and the user lands on the new session's detail page, where the clone streams.
+// (validated against the domain repo shape) with a native autocomplete of the
+// user's GitHub repos (loaded server-side, `listRepos`). On submit the
+// create-session use case runs server-side and the user lands on the new
+// session's detail page, where the clone streams.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { listAccounts } from "~/server/accounts";
+import { listRepos } from "~/server/github";
 import { createSession, listSessions } from "~/server/sessions";
 import { ProviderBadge, StatusPill } from "~/ui/components/badges";
 import { accountStatusBadge } from "~/ui/view-models/badges";
@@ -20,15 +22,19 @@ import {
 import type { AccountRow } from "~/ui/view-models/rows";
 
 export const Route = createFileRoute("/_app/sessions/new")({
-  loader: async () => ({
-    accounts: await listAccounts(),
-    sessions: await listSessions(),
-  }),
+  loader: async () => {
+    const [accounts, sessions, repos] = await Promise.all([
+      listAccounts(),
+      listSessions(),
+      listRepos(),
+    ]);
+    return { accounts, sessions, repos };
+  },
   component: NewSessionPage,
 });
 
 function NewSessionPage() {
-  const { accounts, sessions } = Route.useLoaderData();
+  const { accounts, sessions, repos } = Route.useLoaderData();
   const router = useRouter();
 
   const [name, setName] = useState("");
@@ -65,7 +71,7 @@ function NewSessionPage() {
           <p className="subtle">Repo + account → clone helper container → agent container.</p>
         </div>
         <Link to="/sessions" className="btn">
-          ← back
+          ← Back
         </Link>
       </div>
 
@@ -86,15 +92,24 @@ function NewSessionPage() {
         </div>
 
         <div className="field">
-          <label htmlFor="session-repo">Repository (owner/name, from your GitHub token)</label>
+          <label htmlFor="session-repo">Repository (owner/name)</label>
           <input
             id="session-repo"
+            list="repo-options"
             placeholder="sgomez/cc-remote"
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
           />
+          <datalist id="repo-options">
+            {repos.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+          {repos.length > 0 && (
+            <div className="hint">Start typing to pick from your GitHub repositories.</div>
+          )}
           {repo.trim() !== "" && !repoValid(repo) && (
-            <div className="hint error-text">expected owner/name, e.g. sgomez/cc-remote</div>
+            <div className="hint error-text">Expected owner/name, e.g. sgomez/cc-remote</div>
           )}
         </div>
 
@@ -140,11 +155,11 @@ function NewSessionPage() {
 
         <div className="actions">
           <button type="button" className="btn primary" disabled={!valid || busy} onClick={create}>
-            {busy ? "creating…" : "create session"}
+            {busy ? "Creating…" : "Create session"}
           </button>
           {selected && selected.status !== "ready" && (
             <span className="warn-text" style={{ fontSize: 12 }}>
-              that account is still pending_login
+              That account is still pending_login
             </span>
           )}
         </div>

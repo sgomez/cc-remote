@@ -176,7 +176,7 @@ function AccountDetailPage() {
 
       <div className="actions">
         <Link to="/accounts" className="btn">
-          ← back
+          ← Back
         </Link>
         <span className="spacer" />
         <button
@@ -186,7 +186,7 @@ function AccountDetailPage() {
           title={guard.deletable ? "Deletes the account and its config volume" : guard.reason}
           onClick={remove}
         >
-          delete account{account.configVolume ? " + volume" : ""}
+          Delete account{account.configVolume ? " + volume" : ""}
         </button>
       </div>
       {!guard.deletable && (

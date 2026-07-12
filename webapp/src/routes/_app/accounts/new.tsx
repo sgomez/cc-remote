@@ -34,7 +34,7 @@ function NewAccountPage() {
           <p className="subtle">Register a provider account.</p>
         </div>
         <Link to="/accounts" className="btn">
-          ← back
+          ← Back
         </Link>
       </div>
 
@@ -156,15 +156,15 @@ function TypeForm({ typeId }: { typeId: string }) {
       <div className="actions">
         <button type="button" className="btn primary" disabled={!complete || busy} onClick={create}>
           {busy
-            ? "creating…"
+            ? "Creating…"
             : spec.oauthNotice
-              ? "create & open login container"
+              ? "Create & open login container"
               : spec.hostMount
-                ? "attach host config"
-                : "create account"}
+                ? "Attach host config"
+                : "Create account"}
         </button>
         <Link to="/accounts/new" search={{ type: undefined }} className="btn">
-          change type
+          Change type
         </Link>
       </div>
     </div>

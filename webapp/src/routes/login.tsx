@@ -32,11 +32,26 @@ function LoginPage() {
   return (
     <div className="login-wrap">
       <div className="panel login-card">
-        <div className="logo-icon">◐</div>
+        <div className="logo-icon" aria-hidden="true">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="30"
+            height="30"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <title>Terminal</title>
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+        </div>
         <h1>cc-remote</h1>
         <p className="subtle" style={{ margin: "8px auto 24px" }}>
-          Sign in with GitHub to manage your agent sessions and provider accounts. Access is limited
-          to the configured allow-list.
+          Sign in with GitHub to manage your Claude Code sessions.
         </p>
         <button
           type="button"
@@ -45,7 +60,7 @@ function LoginPage() {
           disabled={busy}
           onClick={signIn}
         >
-          {busy ? "redirecting…" : "Sign in with GitHub"}
+          {busy ? "Redirecting…" : "Sign in with GitHub"}
         </button>
       </div>
     </div>
