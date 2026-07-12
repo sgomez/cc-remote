@@ -1,14 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { appName } from "~/core/domain/placeholder";
+import { listProviderTypes } from "~/core";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 // Walking-skeleton page. The real sessions/accounts UI arrives in #16.
 function Home() {
+  const providerTypes = listProviderTypes();
   return (
     <main>
-      <h1>{appName}</h1>
-      <p>Web-manager rewrite — scaffold is live.</p>
+      <h1>cc-remote</h1>
+      <p>Web-manager rewrite — {providerTypes.length} provider types available.</p>
     </main>
   );
 }
