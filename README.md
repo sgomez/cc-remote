@@ -7,6 +7,9 @@ This project provides a fully configurable Docker setup to run [Claude Code](htt
   <img src="docs/claude-code.png" alt="Claude Code Remote Interface" width="49%" />
 </p>
 
+> [!WARNING]
+> The `main` branch is under active development and may be unstable. For deployment, use the latest tagged release (currently `v0.1.0`) instead of `main` — see [Getting Started](#1-install-or-download-on-vps).
+
 ---
 
 ## Features
@@ -49,19 +52,21 @@ Ensure the following tools are installed and configured on your VPS host machine
 
 Choose one of the following methods to deploy the codebase to your VPS:
 
+> **Note:** `main` is the active development branch and may be unstable. For a stable deployment, use the latest tagged release (currently `v0.1.0`) as shown below.
+
 #### Option A: Clone the Repository (Recommended)
-If you have Git installed on your VPS, clone the repository directly:
+If you have Git installed on your VPS, clone the latest stable release directly:
 ```bash
-git clone https://github.com/sgomez/cc-remote.git
+git clone --branch v0.1.0 https://github.com/sgomez/cc-remote.git
 cd cc-remote
 ```
 
 #### Option B: Download as a ZIP Archive
-If you do not want to configure Git on your VPS, download and extract the ZIP archive:
+If you do not want to configure Git on your VPS, download and extract the ZIP archive for the latest stable release:
 ```bash
-curl -L -o cc-remote.zip https://github.com/sgomez/cc-remote/archive/refs/heads/main.zip
+curl -L -o cc-remote.zip https://github.com/sgomez/cc-remote/archive/refs/tags/v0.1.0.zip
 unzip cc-remote.zip
-cd cc-remote-main
+cd cc-remote-0.1.0
 ```
 
 #### Updating / Overwriting an Existing Installation
@@ -69,15 +74,16 @@ When a new version is released, you can overwrite the previous one while preserv
 
 * **If you cloned via Git:**
   ```bash
-  git pull
+  git fetch --tags
+  git checkout v0.1.0
   docker compose down
   docker compose up -d --build
   ```
 
 * **If you downloaded via ZIP:**
   ```bash
-  # Download the latest archive
-  curl -L -o cc-remote-new.zip https://github.com/sgomez/cc-remote/archive/refs/heads/main.zip
+  # Download the latest release archive
+  curl -L -o cc-remote-new.zip https://github.com/sgomez/cc-remote/archive/refs/tags/v0.1.0.zip
   
   # Extract and overwrite the files (unzip -o overwrites existing files without prompting)
   unzip -o cc-remote-new.zip
