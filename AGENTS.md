@@ -76,3 +76,17 @@ Agent containers default to `claude --permission-mode auto`, which relies on Cla
 ## Custom agent skills (`.agents/`)
 
 Project-specific agent skills/rules live under `.agents/skills/`. Because `/workspace` inside every agent container is the bind-mounted project repo, any agent running inside a `claude-agent` container automatically discovers and loads these — this is the mechanism for giving remotely-run sessions repo-specific instructions (TDD conventions, review checklists, etc.), not `CLAUDE.md` conventions from other repos.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as GitHub issues (via the `gh` CLI); PRs are not treated as a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
