@@ -1,0 +1,13 @@
+{
+  "name": "cc-remote",
+  "private": true,
+  "description": "Root delegator — the app lives in webapp/ (single package, no workspaces).",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "pnpm -C webapp dev",
+    "build": "pnpm -C webapp build",
+    "test": "pnpm -C webapp test",
+    "lint": "pnpm -C webapp lint",
+    "check": "pnpm -C webapp check"
+  }
+}
