@@ -40,7 +40,7 @@ export function buildAnthropicEnv(type: ProviderType, account: Account): Record<
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: account.credentials.apiKey ?? "",
     // Neutralise any inherited key so it can't override the account token
-    // (mirrors legacy web/server.js).
+    // (mirrors the legacy web-manager).
     ANTHROPIC_API_KEY: "",
   };
   if (model) env.ANTHROPIC_MODEL = model;

@@ -2,8 +2,9 @@
 // production container is given (PRD §8 "Configuration split" / issue #17).
 //
 // This is the ONLY env the new app consumes — everything provider/account
-// related moved to the web UI + SQLite, so `providers.json` is gone. The set
-// here is what `setup.sh` / `config.js` compile into `.env` and `.env.example`
+// related moved to the web UI + SQLite, so the legacy per-provider config file
+// is gone. The set here is what `setup.sh` / `config.js` compile into `.env`
+// and `.env.example`
 // documents. The container entrypoint runs this as a preflight (`validate:env`)
 // so a misconfigured deployment fails fast with ALL problems listed at once,
 // instead of surfacing them one obscure request at a time.

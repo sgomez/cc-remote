@@ -25,8 +25,8 @@ export type SessionContainer = {
   cloning: boolean;
 };
 
-// Equivalent to legacy NAME_REGEX / REPO_REGEX (web/server.js on
-// feat/providers-and-console) — the boundary that keeps names safe to
+// Equivalent to legacy NAME_REGEX / REPO_REGEX (from the legacy web-manager on
+// branch feat/providers-and-console) — the boundary that keeps names safe to
 // interpolate into container/volume names and shell commands.
 const NAME_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 const REPO_REGEX = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;

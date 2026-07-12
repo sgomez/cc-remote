@@ -36,12 +36,12 @@ Ensure the following tools are installed and configured on your VPS host machine
 
 - **Docker** and **Docker Compose**
 - **Git**
-- **Claude Code CLI (`@anthropic-ai/claude-code`)**: Before running the sandbox, you must install the Claude Code client on your VPS host and authenticate (by running `claude` and completing the login process) under the same user account that will execute the container. The Docker setup mounts and reads the session configuration (including `~/.claude.json`) directly from this user's home directory.
+- **Claude Code CLI (`@anthropic-ai/claude-code`) — only for `claude-local`**: This is **optional**. It is required only if you want to run the `claude-local` Account, which bind-mounts the host's `~/.claude` / `~/.claude.json` into sessions. In that case, install the Claude Code client on your VPS host and authenticate (by running `claude` and completing the login) under the same user account that will execute the containers. A deployment that uses only API-key or OAuth Accounts (created later in the web UI) needs no host Claude config at all.
 - A **GitHub OAuth Application**:
   - To enable "Sign In with GitHub", you must register an OAuth application on your GitHub developer settings page: [GitHub OAuth Apps](https://github.com/settings/developers).
   - Configure the application:
     - **Homepage URL**: `https://<your-vps-domain>` (or `http://localhost:4000` for local test)
-    - **Authorization callback URL**: `https://<your-vps-domain>/api/auth/github/callback` (or `http://localhost:4000/api/auth/github/callback` for local test)
+    - **Authorization callback URL**: `https://<your-vps-domain>/api/auth/callback/github` (or `http://localhost:4000/api/auth/callback/github` for local test)
   - Copy the generated **Client ID** and **Client Secret** keys to use during the configuration wizard.
 
 ---
@@ -152,7 +152,7 @@ The `web-manager` is a self-contained TanStack Start + Nitro app (`webapp/`) bui
 2. `docker compose up -d --build` — brings up `caddy` + `docker-socket-proxy` + `web-manager`. On start the container validates its environment (failing fast and listing every problem if misconfigured) and applies database migrations idempotently.
 3. Open the web UI, sign in with GitHub, and **create Accounts** (API-key providers like DeepSeek/custom, an OAuth `claude` Account, or the optional `claude-local` singleton). Then create Sessions against an Account.
 
-Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote-db` Docker volume, so they survive `docker compose down && up`. Per-Account Claude configuration lives in its own `cc-remote-account-<id>` volume. `providers.json` no longer exists.
+Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote-db` Docker volume, so they survive `docker compose down && up`. Per-Account Claude configuration lives in its own `cc-remote-account-<id>` volume. There is no on-disk provider config file — everything provider/account related lives in the database.
 
 ### Accessing the Web Manager
 
@@ -204,7 +204,12 @@ Because the Claude Code agent runs entirely inside an isolated Docker container,
 ### Customizing Auto Mode Rules
 You can customize the classifier's behavior (e.g. telling it which repositories, buckets, or domains are trusted to avoid false-positive blocks on routine tasks) by defining an `autoMode` settings block in your user configuration.
 
-Since the container automatically mounts your host's Claude credentials file (`CLAUDE_JSON_PATH` which defaults to `~/.claude.json`), you can customize the configuration directly in `~/.claude.json` on the host:
+Where to put this block depends on the Account:
+
+- **`claude-local`** (host bind mount): the session mounts the host's Claude credentials file (`CLAUDE_JSON_PATH`, default `~/.claude.json`), so customize it directly in `~/.claude.json` on the host.
+- **API-key / OAuth Accounts**: the configuration lives in that Account's own `cc-remote-account-<id>` volume (seeded at registration and, for OAuth, populated by the Login Container), edited from inside a session's web terminal.
+
+Example block:
 
 ```json
 {

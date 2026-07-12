@@ -53,7 +53,7 @@ function mergeEnv(base: Record<string, string>, override: Record<string, string>
   return toEnvArray({ ...base, ...override });
 }
 
-/** Shared hardening flags carried over from legacy `web/server.js`. */
+/** Shared hardening flags carried over from the legacy Express web-manager. */
 function baseHostConfig(config: DockerAdapterConfig, binds: string[]): Docker.HostConfig {
   const hostConfig: Docker.HostConfig = {
     Binds: binds,

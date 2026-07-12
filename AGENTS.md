@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Dockerized deployment for running [Claude Code](https://github.com/anthropics/claude-code) with Remote Control on a VPS. It has two halves:
 
-1. **`claude-agent` image** (root `Dockerfile` + `entrypoint.sh`) — a sandboxed container that runs `claude --remote-control`, auto-clones a GitHub repo into `/workspace`, and maps its Docker user to the host user.
-2. **`web-manager`** (`web/`) — a Node/Express backend + vanilla-JS frontend that lets an authenticated user spin up, stop, and destroy many `claude-agent` containers ("sessions") from a browser, each with its own isolated workspace volume.
+1. **`claude-agent` image** (root `Dockerfile` + `entrypoint.sh` + `console-entrypoint.sh`) — a sandboxed container that runs `claude --remote-control`, auto-clones a GitHub repo into `/workspace`, maps its Docker user to the host user, and ships `ttyd` so every session exposes a web terminal.
+2. **`web-manager`** (`webapp/`) — a self-contained [TanStack Start](https://tanstack.com/start) + [Nitro](https://nitro.build/) app (React SSR + API + SSE + WebSocket terminal proxy on one port, ports-and-adapters core) that lets an authenticated user register **Accounts** and spin up, stop, reset, and destroy many `claude-agent` containers ("Sessions") from a browser, each with its own isolated workspace volume and a built-in web terminal.
 
-There is no application test suite or linter configured (`web/package.json` only defines a `start` script). Validate changes by running the stack (see below) and exercising the affected flow manually.
+The `webapp/` has a full test/lint/type gate (`pnpm test`/`lint`/`check`) run in CI on every PR that touches it (`.github/workflows/ci.yml`); the framework-free `src/core/` is 100% test-driven. The Docker half (images, entrypoints, compose, Caddy) has no automated suite — validate those changes by running the stack (see below) and exercising the affected flow manually.
 
 ## Commands
 
@@ -20,8 +20,13 @@ docker compose logs -f              # tail logs
 docker compose down                 # stop the stack
 docker compose build --no-cache     # rebuild images from scratch
 
-# Web manager backend, iterating outside Docker:
-cd web && npm install && npm start  # requires env vars from .env / docker-compose.yaml to be set manually
+# web-manager, iterating outside Docker (webapp/ uses pnpm):
+cd webapp && pnpm install
+pnpm dev                            # dev server on :4000 (needs env from .env / docker-compose.yaml)
+pnpm test                           # vitest (root `pnpm test` delegates here)
+pnpm lint                           # biome check
+pnpm check                          # tsc --noEmit
+pnpm build                          # production build -> .output/ (node .output/server/index.mjs)
 
 # Single manually-run agent container (not the web-managed multi-session flow):
 docker compose --profile agent up -d claude-agent
@@ -37,33 +42,42 @@ docker exec -it cc-remote-session-<session_name> bash
 
 ### Sibling containers, not Docker-in-Docker
 
-`web-manager` never runs Docker-in-Docker. It talks to the host's Docker daemon through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, read-only bind of `/var/run/docker.sock`, only `CONTAINERS`/`VOLUMES`/`POST` enabled) reachable at `tcp://docker-socket-proxy:2375` on the compose network only — no ports are published to the host. `web/server.js` uses `dockerode` against that proxy to create/start/stop/remove **sibling** `claude-agent` containers and their volumes. This keeps the web-manager container from needing the raw socket mounted directly.
+`web-manager` never runs Docker-in-Docker. It talks to the host's Docker daemon through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, read-only bind of `/var/run/docker.sock`, only `CONTAINERS`/`VOLUMES`/`POST` enabled) reachable at `tcp://docker-socket-proxy:2375` on the compose network only — no ports are published to the host. The Docker adapter (`webapp/src/adapters/docker/`, `dockerode`) works against that proxy to create/start/stop/remove **sibling** `claude-agent` containers and their volumes. This keeps the web-manager container from needing the raw socket mounted directly, so it runs unprivileged.
 
-### Session lifecycle (`web/server.js`)
+### webapp/ layout (ports and adapters)
 
-Every session is a Docker container named `cc-remote-session-<name>` plus a named volume `cc-remote-workspace-<name>`, tagged with labels `cc-remote-session=true`, `cc-remote-session-name`, `cc-remote-repo`. Anything that operates on a session (`getSessionContainer`) inspects the container and refuses to act unless that label is present — this is the boundary that keeps the API from touching arbitrary containers on the host.
+The webapp is hexagonal; the Biome `noRestrictedImports` rule forbids `core/` from importing `adapters/`.
 
-Creating a session is two-phase because cloning a large repo shouldn't block the main agent container from existing:
-1. `startSessionCloning` creates a lightweight helper container `cc-remote-session-clone-<name>` (same `claude-agent` image, but with `Entrypoint` overridden to just run `git clone ... && chown`), labeled `cc-remote-cloning=true`.
-2. The backend awaits the helper container's exit asynchronously; on success it removes the helper and calls `createMainAgentContainer` to start the real `cc-remote-session-<name>` container with the full entrypoint (`claude --remote-control`).
+- `src/core/` — framework-free, 100% TDD: `domain/` (Provider Type catalogue, Account, Session, seeding), `ports/` (`ContainerEngine`, `AccountRepository`, `Clock`, `IdGenerator`), `usecases/` (create/reset/stop/destroy session, register/delete account, login flow).
+- `src/adapters/` — thin, no business logic: `docker/` (dockerode), `db/` (MikroORM over SQLite), `auth/` (better-auth).
+- `src/routes/` — TanStack Start file routes: UI pages plus API/SSE endpoints (the auth catch-all lives at `src/routes/api/auth/$.ts`).
+- `server/routes/` — Nitro server routes, **WebSocket handlers only** (terminal + login-container proxy).
 
-`GET /api/sessions` reports a synthetic `cloning` / `clone_failed` status by looking for the clone-labeled container when the main container doesn't exist yet. `reset` tears down both the container and its volume and re-runs the two-phase create with a fresh `SESSION_UUID`, giving Claude Code a clean session id.
+### Session lifecycle
 
-Session/repo name inputs are validated against `NAME_REGEX` / `REPO_REGEX` before being interpolated into container names or shell commands (the clone helper's `Cmd` is a shell string built from `$GITHUB_REPO`/`$GITHUB_TOKEN` env vars, not string concatenation of the request body).
+Every Session is a Docker container named `cc-remote-session-<name>` plus a named volume `cc-remote-workspace-<name>`, tagged with labels including `cc-remote-session=true` and **`cc-remote-account-id`** (the label moved from the legacy `provider-id`). **Docker is the source of truth** for Sessions: they exist exactly as long as their labelled container exists, and the DB stores nothing about them — there is no DB↔Docker reconciliation. Every guarded operation inspects the container and refuses to act unless the session label is present, keeping the API from touching arbitrary containers on the host.
+
+Creating a Session is two-phase because cloning a large repo shouldn't block the main agent container from existing: a lightweight clone-helper container (`cc-remote-session-clone-<name>`, same image with the entrypoint overridden to `git clone … && chown`, labeled `cc-remote-cloning=true`) runs first; on its successful exit the helper is removed and the real `cc-remote-session-<name>` container starts with the full entrypoint. `list-sessions` reports the synthetic `cloning` / `clone_failed` status from the clone-labeled container while the main container doesn't yet exist, and the SSE status stream surfaces the transition. `reset` tears down container + volume and re-runs the two-phase create with a fresh `SESSION_UUID`, giving Claude Code a clean session id and recreating the Remote Control pairing.
+
+Session/repo name inputs are validated against the domain `NAME_REGEX` / `REPO_REGEX` (`src/core/domain/session.ts`) before being interpolated into container/volume names or the clone helper's shell command, which is built from `$GITHUB_REPO`/`$GITHUB_TOKEN` env vars rather than string-concatenating request input.
+
+### Accounts and Account Config Volumes
+
+Creating a Session always picks an **Account** (a user-registered instance of a code-defined Provider Type), never a Provider Type directly. Each non-singleton Account owns an **Account Config Volume** `cc-remote-account-<id>` holding its `~/.claude` + `~/.claude.json`, mounted into every Session of that Account; it is the canonical credential store (nothing is duplicated into the DB) and is seeded at registration per the Provider Type's Seeding Method — `api-key` (write the wizard-skip JSON + inject `ANTHROPIC_*` env), `host-mount` (`claude-local` singleton, host bind mount, no volume), or `oauth` (seed JSON then complete an interactive login in a Login Container). Deleting an Account is blocked while labelled Sessions exist and otherwise removes its volume. See `CONTEXT.md` for the full domain glossary.
 
 ### Auth
 
-GitHub OAuth (`/api/auth/login` → GitHub → `/api/auth/github/callback`), CSRF-protected via a random `state` bound to an `oauth_state` cookie. Access is gated by `ALLOWED_GITHUB_USERS` and **fails closed**: an empty allow-list denies everyone rather than admitting everyone. On success the backend keeps `{ username, accessToken, expiresAt }` in an in-memory `sessions` Map keyed by a random `sid`, and issues a JWT cookie (`auth_token`) that carries only `{ authenticated, username, sid }` — the GitHub access token itself never leaves the server. `requireAuth` re-resolves `req.user.accessToken` from that server-side map on every request. Session state is process-local (a restart invalidates all logged-in users); `JWT_SECRET` should be set in `.env` or every restart also invalidates sessions by generating a fresh random secret.
+Auth is **better-auth v1.6** (`webapp/src/adapters/auth/auth.ts`): GitHub social login (`scope: ["repo", "user:email"]`) served from the TSS catch-all `src/routes/api/auth/$.ts`; the public GitHub OAuth callback is `/api/auth/callback/github`. Access is gated by `ALLOWED_GITHUB_USERS` and **fails closed** — an empty allow-list denies everyone. The allow-list is keyed on the GitHub `login` (captured via `mapProfileToUser` into a `githubLogin` user field) and enforced in a `databaseHooks.session.create.before` hook that runs on **every** sign-in (returning-user included, so removing someone from the list locks them out), with a `user.create.before` belt for the first sign-up. better-auth persists users, sessions and the GitHub access token in **its own tables on the same SQLite file** as the MikroORM domain tables (WAL mode, two connections); sessions therefore survive a container restart. `BETTER_AUTH_SECRET` must be stable in `.env` or every restart invalidates all sessions. `@better-auth/cli generate|migrate` owns better-auth's schema (`auth:*` scripts); MikroORM migrations own the domain tables (`db:migrate`); `pnpm migrate` runs both, applied idempotently by the container entrypoint on start.
 
-The GitHub access token captured at login is later injected as `GITHUB_TOKEN` into spawned agent/clone containers so each one can clone/push/pull without SSH keys (see `entrypoint.sh`'s git credential helper, which reads `GITHUB_TOKEN` from the environment at use time instead of writing it into `~/.gitconfig`).
+The GitHub access token is retrieved server-side (`auth.api.getAccessToken`) and injected as `GITHUB_TOKEN` into spawned agent/clone containers so each can clone/push/pull without SSH keys (see `entrypoint.sh`'s git credential helper, which reads `GITHUB_TOKEN` from the environment at use time instead of writing it into `~/.gitconfig`). The token itself never reaches the browser.
 
 ### `entrypoint.sh` — User Identity Adapter
 
 Runs as root first specifically to `usermod`/`groupmod` the container's `node` user to match host `PUID`/`PGID`, then re-execs itself via `gosu node` so everything after that point (git config, cloning, launching `claude`) runs unprivileged. This is what keeps files written into the bind-mounted `/workspace` owned by the host user instead of root. It also: restores `~/.claude.json` from `~/.claude/backups/` if missing, marks `/workspace` as a trusted project and sets `permissions.defaultMode` directly in `~/.claude.json` via a small inline Node script, then execs `claude --remote-control[=SESSION_NAME] --permission-mode=$PERMISSION_MODE` (with `--session-id` pinned when `SESSION_UUID` is set, for remote-control pairing persistence across recreations).
 
-### Shared host mounts
+### Host Claude config (`claude-local` only, optional)
 
-`CLAUDE_CONFIG_PATH` (`~/.claude`) and `CLAUDE_JSON_PATH` (`~/.claude.json`) are bind-mounted **read-write** into every agent/web-manager container so all sessions share one authenticated Claude identity from the host. This is a deliberate tradeoff documented inline in `docker-compose.yaml`: a compromised session container can alter the host's Claude config. Per-session isolation instead lives in the dedicated `cc-remote-workspace-<name>` volume.
+`CLAUDE_CONFIG_PATH` (`~/.claude`) and `CLAUDE_JSON_PATH` (`~/.claude.json`) are **optional** and used only by the `claude-local` Account. When set, they are passed to `web-manager` as bind **sources** (resolved on the host, **not** mounted into `web-manager` itself) so the Docker adapter can bind-mount them **read-write** into that Account's Sessions — sharing one authenticated Claude identity from the host. This is a deliberate tradeoff documented inline in `docker-compose.yaml`: a Session so mounted can alter the host's Claude config. A deployment with no host config leaves these empty and runs in API-key / OAuth-Account-only mode; nothing may assume the host Claude config exists. Every other Account gets its identity from its own `cc-remote-account-<id>` volume, and per-Session workspace isolation always lives in the dedicated `cc-remote-workspace-<name>` volume. (The manually-run `claude-agent` compose profile still bind-mounts these paths directly for the single-container flow.)
 
 ### Auto Mode
 

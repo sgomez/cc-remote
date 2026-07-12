@@ -44,15 +44,11 @@ services:
     # No ports are published to the host; only reachable from other services on the
     # compose network (e.g. web-manager via DOCKER_HOST=tcp://docker-socket-proxy:2375).
 
-  # New web-manager: the TanStack Start + Nitro app (webapp/), replacing the
-  # legacy Express service (web/). ONE service, ONE Caddy upstream — it serves
-  # static + SSR + API + SSE + WS on port 4000, so Caddy needs no WebSocket
-  # stanza (it proxies upgrades by default). Runs unprivileged: it reaches Docker
-  # only through docker-socket-proxy over TCP, never a mounted socket.
-  #
-  # To roll back to the legacy service while web/ still exists (until #18):
-  #   git checkout <previous-commit> -- docker-compose.yaml
-  # and recreate providers.json / .sessions_config (see git history of setup.sh).
+  # web-manager: the TanStack Start + Nitro app (webapp/). ONE service, ONE
+  # Caddy upstream — it serves static + SSR + API + SSE + WS on port 4000, so
+  # Caddy needs no WebSocket stanza (it proxies upgrades by default). Runs
+  # unprivileged: it reaches Docker only through docker-socket-proxy over TCP,
+  # never a mounted socket.
   web-manager:
     build: ./webapp
     image: cc-remote-web-manager
@@ -66,7 +62,7 @@ services:
     environment:
       - PORT=4000
       # Auth (better-auth): base URL, stable signing secret, GitHub OAuth app,
-      # fail-closed allow-list. BETTER_AUTH_SECRET replaces the legacy JWT_SECRET.
+      # fail-closed allow-list.
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}

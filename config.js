@@ -82,7 +82,8 @@ async function main() {
 
   // Reuse a previously generated better-auth signing secret if we have one, otherwise
   // generate a new one. Stable across restarts, or every restart invalidates all
-  // logged-in sessions. (Renamed from the legacy JWT_SECRET; old configs are migrated.)
+  // logged-in sessions. (`jwtSecret` fallback migrates configs written by earlier
+  // versions.)
   const betterAuthSecret =
     config.web?.betterAuthSecret || config.web?.jwtSecret || crypto.randomBytes(32).toString('hex');
 
@@ -124,13 +125,15 @@ async function main() {
   // Calculate Callback and Homepage URLs
   let callbackUrl = '';
   let homepageUrl = '';
+  // better-auth serves the GitHub OAuth callback at /api/auth/callback/github
+  // (its catch-all route), NOT the legacy Express /api/auth/github/callback.
   if (enableCaddy) {
-    callbackUrl = `https://${domain}/api/auth/github/callback`;
+    callbackUrl = `https://${domain}/api/auth/callback/github`;
     homepageUrl = `https://${domain}`;
   } else {
     const isLocal = domain.startsWith('localhost') || domain.startsWith('127.0.0.1');
     const scheme = isLocal ? 'http' : 'https';
-    callbackUrl = `${scheme}://${domain}/api/auth/github/callback`;
+    callbackUrl = `${scheme}://${domain}/api/auth/callback/github`;
     homepageUrl = `${scheme}://${domain}`;
   }
 
@@ -244,8 +247,8 @@ async function main() {
   // Caddy-fronted https case and the local http case). Replaces the legacy BASE_URL.
   const betterAuthUrl = homepageUrl;
 
-  // Build .env file contents. Infra only — provider/account data (and the old
-  // providers.json) moved to the web UI + SQLite (PRD §8, issue #17).
+  // Build .env file contents. Infra only — provider/account data moved to the
+  // web UI + SQLite (PRD §8).
   const envContent = [
     `# Auto-generated configuration by config.js`,
     `GITHUB_REPO="${githubRepo}"`,
