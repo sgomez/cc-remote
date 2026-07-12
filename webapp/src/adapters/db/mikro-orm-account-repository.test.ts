@@ -18,7 +18,7 @@ runAccountRepositoryContract("MikroORM + SQLite (temp file)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "cc-remote-db-"));
   const dbPath = join(dir, "test.db");
   const orm = await initOrm(dbPath);
-  await orm.getSchemaGenerator().createSchema();
+  await orm.schema.create();
 
   return {
     repo: new MikroOrmAccountRepository(orm),

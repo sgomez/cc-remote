@@ -50,7 +50,11 @@ services:
   # unprivileged: it reaches Docker only through docker-socket-proxy over TCP,
   # never a mounted socket.
   web-manager:
-    build: ./webapp
+    # Build context is the repo root (monorepo): the pnpm workspace manifest and
+    # the single lockfile live there; the Dockerfile stays under webapp/.
+    build:
+      context: .
+      dockerfile: webapp/Dockerfile
     image: cc-remote-web-manager
     restart: unless-stopped
     depends_on:

@@ -21,3 +21,17 @@ workspace/
 # OS files & logs
 *.log
 .DS_Store
+
+# Install/build artifacts anywhere in the monorepo — deps are reinstalled and the
+# output rebuilt inside the image; the SQLite file holds plaintext credentials.
+node_modules
+**/node_modules
+**/.output
+**/.nitro
+**/.tanstack
+**/data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/src/routeTree.gen.ts
+**/*.tsbuildinfo

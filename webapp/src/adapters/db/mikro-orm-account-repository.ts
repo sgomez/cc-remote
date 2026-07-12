@@ -3,7 +3,7 @@
 // and the `provider_account` row and delegates persistence to MikroORM. No
 // business logic lives here (that stays in the core use cases).
 
-import type { MikroORM } from "@mikro-orm/better-sqlite";
+import type { MikroORM } from "@mikro-orm/sqlite";
 import type { Account, AccountStatus } from "~/core/domain/account";
 import type { AccountRepository } from "~/core/ports/account-repository";
 import { ProviderAccount, type ProviderAccountRow } from "./entities";

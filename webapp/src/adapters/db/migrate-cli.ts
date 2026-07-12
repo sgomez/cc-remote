@@ -14,8 +14,7 @@ import { initOrm } from "./orm";
 async function main(): Promise<void> {
   const orm = await initOrm();
   try {
-    const migrator = orm.getMigrator();
-    const applied = await migrator.up();
+    const applied = await orm.migrator.up();
     if (applied.length === 0) {
       console.log("[migrate] no pending MikroORM migrations");
     } else {

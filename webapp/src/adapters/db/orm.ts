@@ -4,7 +4,7 @@
 // tokens (PRD §3, non-goal: encryption-at-rest).
 
 import { chmodSync, existsSync } from "node:fs";
-import { MikroORM } from "@mikro-orm/better-sqlite";
+import { MikroORM } from "@mikro-orm/sqlite";
 import { ensureDbDir } from "./db-path";
 import config, { DEFAULT_DB_PATH } from "./mikro-orm.config";
 

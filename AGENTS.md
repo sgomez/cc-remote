@@ -20,13 +20,13 @@ docker compose logs -f              # tail logs
 docker compose down                 # stop the stack
 docker compose build --no-cache     # rebuild images from scratch
 
-# web-manager, iterating outside Docker (webapp/ uses pnpm):
-cd webapp && pnpm install
+# web-manager, iterating outside Docker (pnpm workspace; run from the repo root):
+pnpm install                        # one lockfile at the root installs the whole workspace
 pnpm dev                            # dev server on :4000 (needs env from .env / docker-compose.yaml)
-pnpm test                           # vitest (root `pnpm test` delegates here)
+pnpm test                           # vitest (root scripts delegate via `pnpm -F cc-remote-webapp ...`)
 pnpm lint                           # biome check
 pnpm check                          # tsc --noEmit
-pnpm build                          # production build -> .output/ (node .output/server/index.mjs)
+pnpm build                          # production build -> webapp/.output/ (node .output/server/index.mjs)
 
 # Single manually-run agent container (not the web-managed multi-session flow):
 docker compose --profile agent up -d claude-agent
@@ -52,6 +52,8 @@ The webapp is hexagonal; the Biome `noRestrictedImports` rule forbids `core/` fr
 - `src/adapters/` — thin, no business logic: `docker/` (dockerode), `db/` (MikroORM over SQLite), `auth/` (better-auth).
 - `src/routes/` — TanStack Start file routes: UI pages plus API/SSE endpoints (the auth catch-all lives at `src/routes/api/auth/$.ts`).
 - `server/routes/` — Nitro server routes, **WebSocket handlers only** (terminal + login-container proxy).
+
+The repo is a **pnpm workspace** (pnpm 11, pinned in the root `package.json` `packageManager`): the root `pnpm-workspace.yaml` lists `webapp` as the only package and holds all pnpm settings (`allowBuilds` for the native `better-sqlite3`/`esbuild` builds, `overrides`) — there is **no `pnpm` field in `webapp/package.json`**. One lockfile lives at the root; install and run scripts from the root (`pnpm -F cc-remote-webapp …`, aliased by the root scripts). The web-manager image builds from the **repo-root context** (`build.context: .`, `dockerfile: webapp/Dockerfile`) so the Dockerfile can see the workspace manifest and the single lockfile.
 
 ### Session lifecycle
 

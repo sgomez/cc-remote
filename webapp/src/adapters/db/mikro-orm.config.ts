@@ -7,8 +7,8 @@
 // was rejected). MikroORM therefore only ever creates/alters `provider_account`,
 // `setting` and its own migration bookkeeping table — never better-auth's.
 
-import { defineConfig } from "@mikro-orm/better-sqlite";
 import { Migrator } from "@mikro-orm/migrations";
+import { defineConfig } from "@mikro-orm/sqlite";
 import { DB_PATH } from "./db-path";
 import { ProviderAccount, Setting } from "./entities";
 

@@ -4,29 +4,33 @@ on:
   pull_request:
     paths:
       - "webapp/**"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "package.json"
       - ".github/workflows/ci.yml"
   push:
     branches: [main]
     paths:
       - "webapp/**"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "package.json"
       - ".github/workflows/ci.yml"
 
 jobs:
   webapp:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: webapp
     steps:
       - uses: actions/checkout@v4
 
+      # Reads the pnpm version from the root package.json "packageManager" field.
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: webapp/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile

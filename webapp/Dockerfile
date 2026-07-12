@@ -9,49 +9,62 @@
 # entrypoint. Image size is a non-concern for a single-user VPS; a correct,
 # idempotent migrate-on-start is.
 
+# The build context is the repo ROOT (monorepo): the pnpm workspace manifest
+# (pnpm-workspace.yaml) and the single lockfile live there, while this Dockerfile
+# and the app package live under webapp/. Both stages mirror that layout under
+# /app so pnpm's workspace symlinks (root node_modules/.pnpm ← webapp/node_modules)
+# resolve at runtime.
+
 # ---- Stage 1: build ---------------------------------------------------------
 FROM node:24-slim AS builder
 
 # corepack ships pnpm with Node; activate the pinned version so both stages use
 # the same package manager offline (no runtime registry access needed).
-RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 
-# better-sqlite3 is a native module (onlyBuiltDependencies rebuilds it) — needs
-# a C++ toolchain to compile against Node 24's ABI.
+# better-sqlite3 is a native module (allowBuilds rebuilds it) — needs a C++
+# toolchain to compile against Node 24's ABI.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps first (cache layer keyed on the manifests only).
-COPY package.json pnpm-lock.yaml ./
+# Install deps first (cache layer keyed on the workspace manifests only).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY webapp/package.json ./webapp/
 RUN pnpm install --frozen-lockfile
 
-# Build the Nitro output (also generates src/routeTree.gen.ts).
+# Build the Nitro output (also generates webapp/src/routeTree.gen.ts).
 COPY . .
-RUN pnpm build
+RUN pnpm -F cc-remote-webapp build
 
 # ---- Stage 2: runtime -------------------------------------------------------
 FROM node:24-slim AS runtime
 
-RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 
 ENV NODE_ENV=production
 # Nitro's node server binds process.env.PORT (Caddy proxies to web-manager:4000).
 ENV PORT=4000
 
-WORKDIR /app
+# Run from the app package: the entrypoint's pnpm scripts (validate:env, migrate)
+# and `.output/` are relative to webapp/.
+WORKDIR /app/webapp
 
 # Runtime carries: the built output, the full node_modules (native better-sqlite3
 # binding + the migration/validate CLIs), the source (TS migrations + configs the
-# CLIs load), and the manifests (mikro-orm.configPaths lives in package.json).
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.output ./.output
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/tsconfig.json ./
+# CLIs load), and the manifests (mikro-orm.configPaths lives in package.json). The
+# root node_modules + workspace manifests come along so the symlinked
+# webapp/node_modules resolve.
+COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/
+COPY --from=builder /app/webapp/node_modules ./node_modules
+COPY --from=builder /app/webapp/.output ./.output
+COPY --from=builder /app/webapp/src ./src
+COPY --from=builder /app/webapp/package.json /app/webapp/tsconfig.json ./
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY webapp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # DATABASE_PATH default lives here; deployment mounts a named volume over /data
