@@ -1,7 +1,25 @@
+import { fileURLToPath } from "node:url";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
+
+// Optional knex SQL dialect drivers we never install. MikroORM's better-sqlite
+// driver drags in knex, which statically references every dialect's client
+// module; only better-sqlite3 is present, so the Nitro server bundle cannot
+// resolve the rest and the build fails. knex loads a dialect driver lazily and
+// only for the configured client, so for our SQLite connection these are never
+// required at runtime — alias them to an empty stub so the graph resolves.
+const emptyDriver = fileURLToPath(new URL("./build/empty-driver.mjs", import.meta.url));
+const UNUSED_KNEX_DRIVERS = [
+  "mysql",
+  "mysql2",
+  "oracledb",
+  "tedious",
+  "sqlite3",
+  "pg-native",
+  "pg-query-stream",
+];
 
 // TanStack Start + the Nitro v3 vite plugin.
 //
@@ -25,7 +43,10 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: { tsconfigPaths: true },
+  resolve: {
+    tsconfigPaths: true,
+    alias: Object.fromEntries(UNUSED_KNEX_DRIVERS.map((name) => [name, emptyDriver])),
+  },
   environments: {
     // TSS server entry lives under src/ to silence the dev warning about the
     // entry doubling as the Vite SSR input.

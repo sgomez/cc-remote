@@ -104,3 +104,14 @@ export const TTYD_PORT = 7681;
 export function ttydWebSocketUrl(sessionName: string): string {
   return `ws://${mainContainerName(sessionName)}:${TTYD_PORT}${ttydBasePath(sessionName)}/ws`;
 }
+
+/**
+ * The ttyd WebSocket endpoint of a Login Container on the compose network — the
+ * login analogue of `ttydWebSocketUrl`, where the #16 login-terminal proxy
+ * bridges frames. Composed from the same `loginContainerName` +
+ * `loginTerminalBasePath` the adapter creates the Login Container with, so the
+ * proxy target can never drift from the running ttyd (`<base-path>/ws`).
+ */
+export function loginTtydWebSocketUrl(accountId: string): string {
+  return `ws://${loginContainerName(accountId)}:${TTYD_PORT}${loginTerminalBasePath(accountId)}/ws`;
+}

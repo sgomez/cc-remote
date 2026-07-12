@@ -1,15 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { listProviderTypes } from "~/core";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/")({ component: Home });
-
-// Walking-skeleton page. The real sessions/accounts UI arrives in #16.
-function Home() {
-  const providerTypes = listProviderTypes();
-  return (
-    <main>
-      <h1>cc-remote</h1>
-      <p>Web-manager rewrite — {providerTypes.length} provider types available.</p>
-    </main>
-  );
-}
+// Sessions is the landing page (#16); the auth guard on the /_app layout
+// bounces unauthenticated users on to /login.
+export const Route = createFileRoute("/")({
+  beforeLoad: () => {
+    throw redirect({ to: "/sessions" });
+  },
+});

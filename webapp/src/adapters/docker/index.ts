@@ -11,6 +11,7 @@ export {
 } from "./config";
 export {
   loginTerminalBasePath,
+  loginTtydWebSocketUrl,
   TTYD_PORT,
   ttydBasePath,
   ttydWebSocketUrl,

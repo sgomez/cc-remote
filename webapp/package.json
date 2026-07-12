@@ -23,6 +23,8 @@
     "@mikro-orm/migrations": "6.6.15",
     "@tanstack/react-router": "^1.168.8",
     "@tanstack/react-start": "^1.168.27",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "better-auth": "^1.6.23",
     "better-sqlite3": "^12.11.1",
     "dockerode": "^5.0.1",
