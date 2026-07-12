@@ -86,6 +86,8 @@ services:
       # SQLite (domain + better-auth tables) on a persisted named volume so
       # Accounts and auth sessions survive `docker compose down && up`.
       - DATABASE_PATH=/data/cc-remote.db
+      # `debug` library namespaces (silent unless set). Dev: DEBUG=cc-remote:*
+      - DEBUG=${DEBUG:-}
       # Optional claude-local host paths — passed to agent containers as bind
       # SOURCES (resolved on the host, NOT mounted into web-manager). Empty when
       # the deployment is API-key-only; the app then simply offers no claude-local.

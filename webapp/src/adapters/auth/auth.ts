@@ -11,9 +11,12 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import Database from "better-sqlite3";
+import { debug } from "../../debug";
 import { DB_PATH, ensureDbDir } from "../db/db-path";
 import { isLoginAllowed, parseAllowList } from "./allow-list";
+import { githubAdditionalFields, mapGithubProfileToUser } from "./github-profile";
 
+const log = debug("auth");
 const ALLOWED = parseAllowList(process.env.ALLOWED_GITHUB_USERS);
 
 ensureDbDir();
@@ -27,11 +30,9 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
   user: {
-    additionalFields: {
-      // Persist the GitHub username so the allow-list can key on it (the list is
-      // keyed by login, not email). `input: false` keeps it server-controlled.
-      githubLogin: { type: "string", required: false, input: false },
-    },
+    // `githubLogin` persisted from the verified GitHub profile; see
+    // github-profile.ts for why it must stay inputtable.
+    additionalFields: githubAdditionalFields,
   },
   socialProviders: {
     github: {
@@ -40,7 +41,7 @@ export const auth = betterAuth({
       // `repo` = push/pull private repos (parity with the legacy token);
       // `user:email` is mandatory for better-auth's GitHub provider.
       scope: ["repo", "user:email"],
-      mapProfileToUser: (profile) => ({ githubLogin: profile.login }),
+      mapProfileToUser: mapGithubProfileToUser,
     },
   },
   databaseHooks: {
@@ -50,7 +51,9 @@ export const auth = betterAuth({
       create: {
         before: async (user) => {
           const login = (user as { githubLogin?: string }).githubLogin;
-          if (!isLoginAllowed(login, ALLOWED)) {
+          const allowed = isLoginAllowed(login, ALLOWED);
+          log("user.create.before login=%o allowed=%o allowList=%o", login, allowed, ALLOWED);
+          if (!allowed) {
             throw new APIError("FORBIDDEN", { message: "User not allowed" });
           }
           return { data: user };
@@ -66,7 +69,9 @@ export const auth = betterAuth({
         before: async (session, ctx) => {
           const user = await ctx?.context.internalAdapter.findUserById(session.userId);
           const login = (user as { githubLogin?: string } | null | undefined)?.githubLogin;
-          if (!isLoginAllowed(login, ALLOWED)) return false;
+          const allowed = isLoginAllowed(login, ALLOWED);
+          log("session.create.before login=%o allowed=%o allowList=%o", login, allowed, ALLOWED);
+          if (!allowed) return false;
           return { data: session };
         },
       },
