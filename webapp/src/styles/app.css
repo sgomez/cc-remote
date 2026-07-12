@@ -279,6 +279,22 @@ code.inline {
   pointer-events: none;
 }
 
+/* Inline busy spinner (action buttons); inherits the button's text colour. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ---- glass panels + card lists ------------------------------------------- */
 .panel {
   background: var(--card-bg);
@@ -648,6 +664,107 @@ code.inline {
 }
 .terminal-status.error {
   color: #fca5a5;
+}
+
+/* ---- confirm dialog (native <dialog>, replaces window.confirm) ----------- */
+.confirm-dialog {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: #111827;
+  color: var(--text-color);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  max-width: min(440px, calc(100vw - 32px));
+  width: 100%;
+  /* The global `* { margin: 0 }` reset kills the UA `margin: auto` that centres a
+     modal <dialog>; restore it so showModal() lands in the viewport centre. */
+  margin: auto;
+}
+.confirm-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.6);
+  backdrop-filter: blur(2px);
+}
+.confirm-body {
+  padding: 24px;
+}
+.confirm-body h2 {
+  font-size: 1.15rem;
+  margin-bottom: 10px;
+}
+.confirm-body .subtle {
+  margin: 0 0 4px;
+  max-width: none;
+}
+.confirm-body .actions {
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+/* ---- toasts -------------------------------------------------------------- */
+.toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 32px));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background: #111827;
+  box-shadow: var(--shadow-md);
+  font-size: 0.9rem;
+  color: var(--text-color);
+  animation: toast-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.toast span {
+  flex: 1;
+}
+.toast.error {
+  border-color: rgba(239, 68, 68, 0.4);
+  border-left: 3px solid var(--danger);
+}
+.toast.success {
+  border-color: rgba(16, 185, 129, 0.4);
+  border-left: 3px solid var(--success);
+}
+.toast-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.toast-close:hover {
+  color: var(--text-color);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 720px) {
+  .toast-stack {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+  }
 }
 
 /* ---- login screen -------------------------------------------------------- */

@@ -7,11 +7,13 @@
 // reason while Sessions exist, and confirmed otherwise.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { AccountStatus } from "~/core";
 import { requireProviderType } from "~/core";
 import { deleteAccount, getAccount, startLogin } from "~/server/accounts";
 import { Capability, ProviderBadge, StatusPill } from "~/ui/components/badges";
+import { useFeedback } from "~/ui/components/feedback";
+import { Spinner } from "~/ui/components/Spinner";
 import { Terminal } from "~/ui/components/Terminal";
 import { useLiveSnapshot } from "~/ui/live/live-status";
 import { accountStatusBadge, sessionStatusBadge } from "~/ui/view-models/badges";
@@ -44,6 +46,9 @@ function AccountDetailPage() {
     if (account && status && status !== account.status) router.invalidate();
   }, [status, account, router]);
 
+  const { confirm, toast } = useFeedback();
+  const [deleting, setDeleting] = useState(false);
+
   if (!account) {
     return (
       <div className="empty">
@@ -58,17 +63,23 @@ function AccountDetailPage() {
   const badge = accountStatusBadge(status ?? account.status);
 
   const remove = async () => {
-    if (
-      !window.confirm(
-        `Delete account "${account.displayName}"${account.configVolume ? " and its config volume" : ""}? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Delete account "${account.displayName}"?`,
+      body: `This cannot be undone${account.configVolume ? ", and its config volume is removed too" : ""}.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    setDeleting(true);
     try {
       await deleteAccount({ data: { id: account.id } });
+      toast.success(`Account "${account.displayName}" deleted.`);
       router.navigate({ to: "/accounts" });
-    } catch {
+    } catch (err) {
+      toast.error(
+        `Couldn't delete "${account.displayName}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+      setDeleting(false);
       router.invalidate();
     }
   };
@@ -182,11 +193,12 @@ function AccountDetailPage() {
         <button
           type="button"
           className="btn danger"
-          disabled={!guard.deletable}
+          disabled={!guard.deletable || deleting}
           title={guard.deletable ? "Deletes the account and its config volume" : guard.reason}
           onClick={remove}
         >
-          Delete account{account.configVolume ? " + volume" : ""}
+          {deleting && <Spinner />}
+          {deleting ? "Deleting…" : `Delete account${account.configVolume ? " + volume" : ""}`}
         </button>
       </div>
       {!guard.deletable && (

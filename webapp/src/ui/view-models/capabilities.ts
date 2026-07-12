@@ -32,6 +32,62 @@ export function sessionActions(status: SessionStatus): SessionActions {
   };
 }
 
+/** The lifecycle actions rendered in the session detail's action row. */
+export type SessionActionKind = "stop" | "start" | "reset" | "destroy";
+
+export type SessionActionButton = {
+  action: SessionActionKind;
+  /** Normal label, or the progress verb while this action is in flight. */
+  label: string;
+  /** This action is the one currently running. */
+  busy: boolean;
+  /** True while ANY action is in flight (so double-submits are blocked). */
+  disabled: boolean;
+  /** Reset/destroy are gated behind a confirmation dialog. */
+  confirm: boolean;
+};
+
+const ACTION_LABELS: Record<SessionActionKind, { idle: string; busy: string }> = {
+  stop: { idle: "Stop", busy: "Stopping…" },
+  start: { idle: "Start", busy: "Starting…" },
+  reset: { idle: "Reset", busy: "Resetting…" },
+  destroy: { idle: "Destroy", busy: "Destroying…" },
+};
+
+const CONFIRM_ACTIONS: ReadonlySet<SessionActionKind> = new Set(["reset", "destroy"]);
+
+/**
+ * The action row buttons for a Session status, with the in-flight `busy` action
+ * overlaid: the active button shows its progress verb, and while any action is
+ * running every button is disabled so a slow container op can't be double-fired.
+ * Built on {@link sessionActions} so button visibility stays single-sourced.
+ */
+export function sessionActionState(
+  status: SessionStatus,
+  busy: SessionActionKind | null,
+): SessionActionButton[] {
+  const a = sessionActions(status);
+  const order: SessionActionKind[] = ["stop", "start", "reset", "destroy"];
+  const visible: Record<SessionActionKind, boolean> = {
+    stop: a.canStop,
+    start: a.canStart,
+    reset: a.canReset,
+    destroy: a.canDestroy,
+  };
+  return order
+    .filter((action) => visible[action])
+    .map((action) => {
+      const isBusy = busy === action;
+      return {
+        action,
+        label: isBusy ? ACTION_LABELS[action].busy : ACTION_LABELS[action].idle,
+        busy: isBusy,
+        disabled: busy !== null,
+        confirm: CONFIRM_ACTIONS.has(action),
+      };
+    });
+}
+
 const SEEDING_LABELS: Record<SeedingMethod, string> = {
   "api-key": "API key",
   "host-mount": "host mount",

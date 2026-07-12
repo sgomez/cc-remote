@@ -5,6 +5,7 @@
 // (reset/destroy) behind a confirmation. Status tracks the #15 SSE stream live.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 import { requireProviderType } from "~/core";
 import { listAccounts } from "~/server/accounts";
 import {
@@ -15,11 +16,21 @@ import {
   stopSession,
 } from "~/server/sessions";
 import { ProviderBadge, StatusPill } from "~/ui/components/badges";
+import { type ConfirmOptions, useFeedback } from "~/ui/components/feedback";
+import { Spinner } from "~/ui/components/Spinner";
 import { Terminal } from "~/ui/components/Terminal";
 import { useLiveSnapshot } from "~/ui/live/live-status";
 import { sessionStatusBadge } from "~/ui/view-models/badges";
-import { remoteControlPanel, sessionActions } from "~/ui/view-models/capabilities";
+import {
+  remoteControlPanel,
+  type SessionActionKind,
+  sessionActionState,
+} from "~/ui/view-models/capabilities";
 import type { AccountRow, SessionRow } from "~/ui/view-models/rows";
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 export const Route = createFileRoute("/_app/sessions/$sessionName")({
   loader: async () => ({
@@ -35,6 +46,8 @@ function SessionDetailPage() {
   const router = useRouter();
   const sessions = useLiveSnapshot<SessionRow[]>("/api/sessions/status", "sessions", initial);
   const session = sessions.find((s) => s.name === sessionName);
+  const { confirm, toast } = useFeedback();
+  const [busy, setBusy] = useState<SessionActionKind | null>(null);
 
   if (!session) {
     return (
@@ -47,13 +60,51 @@ function SessionDetailPage() {
   const account = accounts.find((a: AccountRow) => a.id === session.accountId);
   const type = account ? requireProviderType(account.providerType) : undefined;
   const badge = sessionStatusBadge(session.status);
-  const actions = sessionActions(session.status);
   const rc = type ? remoteControlPanel(type) : undefined;
+  const buttons = sessionActionState(session.status, busy);
 
-  const run = async (fn: () => Promise<unknown>, confirmMsg?: string) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return;
-    await fn();
-    router.invalidate();
+  const dispatch: Record<SessionActionKind, () => Promise<unknown>> = {
+    stop: () => stopSession({ data: { name: session.name } }),
+    start: () => startSession({ data: { name: session.name } }),
+    reset: () => resetSession({ data: { name: session.name } }),
+    destroy: () => destroySession({ data: { name: session.name } }),
+  };
+
+  const confirmCopy: Partial<Record<SessionActionKind, ConfirmOptions>> = {
+    reset: {
+      title: `Reset "${session.name}"?`,
+      body: "This destroys the container and its workspace volume, then re-clones with a fresh session UUID.",
+      confirmLabel: "Reset",
+      danger: true,
+    },
+    destroy: {
+      title: `Destroy "${session.name}"?`,
+      body: "This removes the container and its workspace volume permanently.",
+      confirmLabel: "Destroy",
+      danger: true,
+    },
+  };
+
+  // Runs a lifecycle action with confirmation (unless skipped, e.g. clone retry),
+  // a busy state that blocks double-submits, and a toast on success/failure —
+  // the SSE stream still drives the status pill as the container transitions.
+  const runAction = async (action: SessionActionKind, opts?: { skipConfirm?: boolean }) => {
+    const ask = opts?.skipConfirm ? undefined : confirmCopy[action];
+    if (ask && !(await confirm(ask))) return;
+    setBusy(action);
+    try {
+      await dispatch[action]();
+      if (action === "destroy") {
+        toast.success(`Session "${session.name}" destroyed.`);
+        router.navigate({ to: "/sessions" });
+        return;
+      }
+      router.invalidate();
+    } catch (err) {
+      toast.error(`Couldn't ${action} "${session.name}": ${errorMessage(err)}`);
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -83,9 +134,11 @@ function SessionDetailPage() {
             <button
               type="button"
               className="btn"
-              onClick={() => run(() => resetSession({ data: { name: session.name } }))}
+              disabled={busy !== null}
+              onClick={() => runAction("reset", { skipConfirm: true })}
             >
-              Retry clone
+              {busy === "reset" && <Spinner />}
+              {busy === "reset" ? "Retrying…" : "Retry clone"}
             </button>
           </div>
         </div>
@@ -128,51 +181,23 @@ function SessionDetailPage() {
           ← Back
         </Link>
         <span className="spacer" />
-        {actions.canStop && (
+        {buttons.map((b) => (
           <button
+            key={b.action}
             type="button"
-            className="btn"
-            onClick={() => run(() => stopSession({ data: { name: session.name } }))}
-          >
-            Stop
-          </button>
-        )}
-        {actions.canStart && (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => run(() => startSession({ data: { name: session.name } }))}
-          >
-            Start
-          </button>
-        )}
-        {actions.canReset && (
-          <button
-            type="button"
-            className="btn"
-            title="Destroys container + workspace volume, re-clones with a fresh session UUID"
-            onClick={() =>
-              run(
-                () => resetSession({ data: { name: session.name } }),
-                `Reset "${session.name}"? This destroys the container and its workspace volume, then re-clones with a fresh session UUID.`,
-              )
+            className={`btn${b.action === "destroy" ? " danger" : ""}`}
+            disabled={b.disabled}
+            title={
+              b.action === "reset"
+                ? "Destroys container + workspace volume, re-clones with a fresh session UUID"
+                : undefined
             }
+            onClick={() => runAction(b.action)}
           >
-            Reset
+            {b.busy && <Spinner />}
+            {b.label}
           </button>
-        )}
-        <button
-          type="button"
-          className="btn danger"
-          onClick={() =>
-            run(async () => {
-              await destroySession({ data: { name: session.name } });
-              router.navigate({ to: "/sessions" });
-            }, `Destroy "${session.name}"? This removes the container and its workspace volume permanently.`)
-          }
-        >
-          Destroy
-        </button>
+        ))}
       </div>
     </>
   );
