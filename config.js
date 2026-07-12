@@ -80,8 +80,11 @@ async function main() {
   if (!gitName) gitName = 'Claude Remote Agent';
   if (!gitEmail) gitEmail = 'agent@example.com';
 
-  // Reuse a previously generated JWT secret if we have one, otherwise generate a new one.
-  const jwtSecret = config.web?.jwtSecret || crypto.randomBytes(32).toString('hex');
+  // Reuse a previously generated better-auth signing secret if we have one, otherwise
+  // generate a new one. Stable across restarts, or every restart invalidates all
+  // logged-in sessions. (Renamed from the legacy JWT_SECRET; old configs are migrated.)
+  const betterAuthSecret =
+    config.web?.betterAuthSecret || config.web?.jwtSecret || crypto.randomBytes(32).toString('hex');
 
   console.log('\n\x1b[35m--- Web Manager Configuration ---\x1b[0m');
   
@@ -150,15 +153,34 @@ async function main() {
   const allowedUsersInput = await question(`Enter allowed GitHub usernames (comma-separated, e.g., sgomez, user2) [${defaultAllowedUsers}]: `);
   const allowedUsers = allowedUsersInput === '' ? defaultAllowedUsers : allowedUsersInput.trim();
 
+  // claude-local (host-mounted ~/.claude) is now OPTIONAL: a deployment may run with
+  // only API-key / OAuth Accounts and no host Claude config at all (PRD §3). Ask, and
+  // when disabled emit empty CLAUDE_*_PATH so nothing assumes the host config exists.
+  console.log('\n\x1b[35m--- claude-local (optional) ---\x1b[0m');
+  console.log('\x1b[36mEnable claude-local to mount the host ~/.claude into agent containers.');
+  console.log('Leave disabled to run API-key / OAuth Accounts only (created in the web UI).\x1b[0m');
+  const defaultClaudeLocal =
+    config.paths?.claudeLocal !== undefined
+      ? config.paths.claudeLocal
+      : !!(config.paths?.claudeConfig || config.paths?.claudeJson);
+  const claudeLocalInput = await question(
+    `Enable claude-local (mount host ~/.claude)? (y/N) [${defaultClaudeLocal ? 'y' : 'n'}]: `,
+  );
+  let claudeLocal = defaultClaudeLocal;
+  if (claudeLocalInput !== '') {
+    claudeLocal = ['y', 'yes'].includes(claudeLocalInput.toLowerCase().trim());
+  }
+
   // Automatic Host & Core Resolutions
   const webPort = config.web?.port || '4000';
   const githubRepo = config.github?.repo || '';
   const projectPathRaw = config.paths?.workspace || './workspace';
   const projectPath = resolvePath(projectPathRaw);
-  const claudeConfigRaw = config.paths?.claudeConfig || '~/.claude';
-  const claudeConfig = resolvePath(claudeConfigRaw);
-  const claudeJsonRaw = config.paths?.claudeJson || '~/.claude.json';
-  const claudeJson = resolvePath(claudeJsonRaw);
+  // Only meaningful (and only resolved) when claude-local is enabled.
+  const claudeConfigRaw = claudeLocal ? config.paths?.claudeConfig || '~/.claude' : '';
+  const claudeConfig = claudeLocal ? resolvePath(claudeConfigRaw) : '';
+  const claudeJsonRaw = claudeLocal ? config.paths?.claudeJson || '~/.claude.json' : '';
+  const claudeJson = claudeLocal ? resolvePath(claudeJsonRaw) : '';
   
   const defaultSessionName = config.session?.name || (githubRepo ? path.basename(githubRepo) : path.basename(projectPath));
   const sessionName = defaultSessionName;
@@ -180,6 +202,7 @@ async function main() {
     },
     paths: {
       workspace: projectPathRaw,
+      claudeLocal: claudeLocal,
       claudeConfig: claudeConfigRaw,
       claudeJson: claudeJsonRaw
     },
@@ -196,7 +219,7 @@ async function main() {
       clientSecret: clientSecret,
       allowedUsers: allowedUsers,
       port: webPort,
-      jwtSecret: jwtSecret,
+      betterAuthSecret: betterAuthSecret,
       caddy: {
         enabled: enableCaddy,
         httpPort: httpPort,
@@ -216,22 +239,27 @@ async function main() {
   // Calculate port bind string
   const caddyHttpPortBind = (enableCaddy && httpPort > 0) ? `${httpPort}:80` : '127.0.0.1:40080:80';
 
-  // BASE_URL is only meaningful when Caddy fronts the app with a real domain.
-  const baseUrl = enableCaddy && domain ? `https://${domain}` : '';
+  // BETTER_AUTH_URL is the public origin better-auth signs cookies / builds the
+  // GitHub OAuth callback against. Always non-empty (homepageUrl covers the
+  // Caddy-fronted https case and the local http case). Replaces the legacy BASE_URL.
+  const betterAuthUrl = homepageUrl;
 
-  // Build .env file contents
+  // Build .env file contents. Infra only — provider/account data (and the old
+  // providers.json) moved to the web UI + SQLite (PRD §8, issue #17).
   const envContent = [
     `# Auto-generated configuration by config.js`,
     `GITHUB_REPO="${githubRepo}"`,
     `GIT_USER_NAME="${gitName}"`,
     `GIT_USER_EMAIL="${gitEmail}"`,
     `PROJECT_PATH="${projectPath}"`,
+    `# claude-local host paths (optional). Empty = API-key / OAuth Accounts only.`,
     `CLAUDE_CONFIG_PATH="${claudeConfig}"`,
     `CLAUDE_JSON_PATH="${claudeJson}"`,
     `SESSION_NAME="${sessionName}"`,
     `SESSION_UUID="${sessionUuid}"`,
     `PERMISSION_MODE="${permissionMode}"`,
     `DOMAIN_NAME="${domain}"`,
+    `BETTER_AUTH_URL="${betterAuthUrl}"`,
     `GITHUB_CLIENT_ID="${clientId}"`,
     `GITHUB_CLIENT_SECRET="${clientSecret}"`,
     `ALLOWED_GITHUB_USERS="${allowedUsers}"`,
@@ -241,8 +269,7 @@ async function main() {
     `COMPOSE_PROFILES="${enableCaddy ? 'caddy' : ''}"`,
     `PUID="${hostUid}"`,
     `PGID="${hostGid}"`,
-    `JWT_SECRET="${jwtSecret}"`,
-    `BASE_URL="${baseUrl}"`
+    `BETTER_AUTH_SECRET="${betterAuthSecret}"`
   ].join('\n') + '\n';
 
   fs.writeFileSync('.env', envContent, 'utf8');
