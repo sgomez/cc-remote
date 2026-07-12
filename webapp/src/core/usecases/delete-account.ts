@@ -30,6 +30,11 @@ export function makeDeleteAccount(deps: DeleteAccountDeps) {
 
     await deps.accounts.delete(account.id);
 
+    // A `pending_login` Account may still have a Login Container attached to its
+    // volume; tear it down before the volume goes (idempotent — a no-op once the
+    // login completed and the poll already removed it) (#14).
+    await deps.engine.removeLoginContainer(account.id);
+
     if (ownsConfigVolume(requireProviderType(account.providerType))) {
       await deps.engine.removeVolume(accountConfigVolumeName(account.id));
     }

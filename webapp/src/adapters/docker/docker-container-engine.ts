@@ -9,19 +9,25 @@ import Docker from "dockerode";
 import type {
   CloneContainerSpec,
   ContainerEngine,
+  LoginContainer,
+  LoginContainerSpec,
   SessionContainer,
   SessionContainerSpec,
 } from "../../core";
 import { configFromEnv, type DockerAdapterConfig } from "./config";
 import {
   cloneContainerName,
+  isLoginLabelled,
   isSessionLabelled,
+  loginContainerName,
   mainContainerName,
+  toLoginContainer,
   toSessionContainer,
 } from "./container-mapping";
 import {
   buildCloneCreateOptions,
   buildHasCredentialsCreateOptions,
+  buildLoginCreateOptions,
   buildSeedCreateOptions,
   buildSessionCreateOptions,
 } from "./container-specs";
@@ -86,6 +92,33 @@ export class DockerContainerEngine implements ContainerEngine {
 
   async removeContainer(sessionName: string): Promise<void> {
     await this.guardedSession(sessionName).remove({ force: true });
+  }
+
+  async runLoginContainer(spec: LoginContainerSpec): Promise<void> {
+    const container = await this.docker.createContainer(buildLoginCreateOptions(spec, this.config));
+    await container.start();
+  }
+
+  async getLoginContainer(accountId: string): Promise<LoginContainer | null> {
+    try {
+      const info = await this.docker.getContainer(loginContainerName(accountId)).inspect();
+      if (!isLoginLabelled(info.Config.Labels)) return null;
+      return toLoginContainer({ labels: info.Config.Labels ?? {}, state: info.State.Status });
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  async listLoginContainers(): Promise<LoginContainer[]> {
+    const containers = await this.docker.listContainers({ all: true });
+    return containers
+      .filter((c) => isLoginLabelled(c.Labels))
+      .map((c) => toLoginContainer({ labels: c.Labels, state: c.State }));
+  }
+
+  async removeLoginContainer(accountId: string): Promise<void> {
+    await this.removeIfPresent(loginContainerName(accountId));
   }
 
   async createVolume(name: string): Promise<void> {

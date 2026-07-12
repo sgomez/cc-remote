@@ -9,7 +9,12 @@ export {
   type DockerAdapterConfig,
   parseDockerHost,
 } from "./config";
-export { TTYD_PORT, ttydBasePath, ttydWebSocketUrl } from "./container-mapping";
+export {
+  loginTerminalBasePath,
+  TTYD_PORT,
+  ttydBasePath,
+  ttydWebSocketUrl,
+} from "./container-mapping";
 export { CREDENTIALS_MARKER } from "./container-specs";
 export {
   createDockerContainerEngine,
@@ -20,3 +25,9 @@ export {
   registerGracefulShutdown,
   stopRunningSessions,
 } from "./graceful-shutdown";
+export {
+  DEFAULT_LOGIN_POLL_INTERVAL_MS,
+  type LoginPollerDeps,
+  type LoginPollerOptions,
+  startLoginPoller,
+} from "./login-poller";

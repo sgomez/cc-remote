@@ -3,10 +3,12 @@
 // files and detected credentials. Reused by later sub-issues, so it implements
 // the real port contract rather than asserting call shapes.
 
+import type { LoginContainer } from "../src/core/domain/login";
 import type { SessionContainer } from "../src/core/domain/session";
 import type {
   CloneContainerSpec,
   ContainerEngine,
+  LoginContainerSpec,
   SessionContainerSpec,
 } from "../src/core/ports/container-engine";
 
@@ -25,11 +27,14 @@ export class FakeContainerEngine implements ContainerEngine {
   /** volume name -> (file path -> content). */
   readonly seededFiles = new Map<string, Map<string, string>>();
   private readonly credentialed = new Set<string>();
+  /** accountId -> Login Container (its own label space, separate from sessions). */
+  private readonly logins = new Map<string, LoginContainer>();
   /** Exit code the next `awaitCloneExit` reports. */
   nextCloneExit = 0;
   /** Records specs the use cases passed, for assertions. */
   readonly runSessionSpecs: SessionContainerSpec[] = [];
   readonly runCloneSpecs: CloneContainerSpec[] = [];
+  readonly runLoginSpecs: LoginContainerSpec[] = [];
 
   // --- test helpers -------------------------------------------------------
 
@@ -45,6 +50,16 @@ export class FakeContainerEngine implements ContainerEngine {
 
   hasVolume(name: string): boolean {
     return this.volumes.has(name);
+  }
+
+  /** Whether a Login Container currently exists for an account. */
+  hasLoginContainer(accountId: string): boolean {
+    return this.logins.has(accountId);
+  }
+
+  /** Simulate an orphaned Login Container surviving a web-manager restart. */
+  seedLoginContainer(accountId: string, state = "running"): void {
+    this.logins.set(accountId, { accountId, state });
   }
 
   // --- port ---------------------------------------------------------------
@@ -102,6 +117,24 @@ export class FakeContainerEngine implements ContainerEngine {
 
   async removeContainer(sessionName: string): Promise<void> {
     this.main.delete(sessionName);
+  }
+
+  async runLoginContainer(spec: LoginContainerSpec): Promise<void> {
+    this.runLoginSpecs.push(spec);
+    this.logins.set(spec.accountId, { accountId: spec.accountId, state: "running" });
+  }
+
+  async getLoginContainer(accountId: string): Promise<LoginContainer | null> {
+    const c = this.logins.get(accountId);
+    return c ? { ...c } : null;
+  }
+
+  async listLoginContainers(): Promise<LoginContainer[]> {
+    return [...this.logins.values()].map((c) => ({ ...c }));
+  }
+
+  async removeLoginContainer(accountId: string): Promise<void> {
+    this.logins.delete(accountId);
   }
 
   async createVolume(name: string): Promise<void> {

@@ -3,7 +3,12 @@
 // these). The label vocabulary is the domain's SESSION_LABELS — the adapter
 // never invents label keys.
 
-import { SESSION_LABELS, type SessionContainer } from "../../core";
+import {
+  LOGIN_LABELS,
+  type LoginContainer,
+  SESSION_LABELS,
+  type SessionContainer,
+} from "../../core";
 
 /** The `cc-remote-session-<name>` container that runs the agent. */
 export function mainContainerName(sessionName: string): string {
@@ -50,6 +55,40 @@ export function toSessionContainer(view: {
  */
 export function ttydBasePath(sessionName: string): string {
   return `/api/sessions/${sessionName}/terminal`;
+}
+
+/** The `cc-remote-login-<account-id>` ephemeral OAuth-login container (#14). */
+export function loginContainerName(accountId: string): string {
+  return `cc-remote-login-${accountId}`;
+}
+
+/**
+ * The `cc-remote-login` label guard — the login analogue of `isSessionLabelled`.
+ * Login Containers carry this marker, NOT the session marker, so they never
+ * surface in session listings.
+ */
+export function isLoginLabelled(labels: Record<string, string> | undefined | null): boolean {
+  return labels?.[LOGIN_LABELS.marker] === "true";
+}
+
+/** Map a login-labelled container (its labels + raw engine state) to a LoginContainer. */
+export function toLoginContainer(view: {
+  labels: Record<string, string>;
+  state: string;
+}): LoginContainer {
+  return {
+    accountId: view.labels[LOGIN_LABELS.accountId] ?? "",
+    state: view.state,
+  };
+}
+
+/**
+ * ttyd base path for a Login Container, mirroring `ttydBasePath` for sessions.
+ * Baked into the login container's CMD and matched by the WS proxy (#15) so the
+ * terminal is reachable at one agreed path.
+ */
+export function loginTerminalBasePath(accountId: string): string {
+  return `/api/accounts/${accountId}/login/terminal`;
 }
 
 /** Port ttyd listens on inside every agent container (image `EXPOSE 7681`). */
