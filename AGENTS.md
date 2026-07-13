@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Dockerized deployment for running [Claude Code](https://github.com/anthropics/claude-code) with Remote Control on a VPS. It has two halves:
 
-1. **`claude-agent` image** (root `Dockerfile` + `entrypoint.sh` + `console-entrypoint.sh`) — a sandboxed container that runs `claude --remote-control`, auto-clones a GitHub repo into `/workspace`, maps its Docker user to the host user, and ships `ttyd` so every session exposes a web terminal.
+1. **`claude-agent` image** (root `Dockerfile` + `entrypoint.sh` + `agent-session.sh` + `console-entrypoint.sh`) — a sandboxed container that runs `claude --remote-control`, auto-clones a GitHub repo into `/workspace`, maps its Docker user to the host user, and ships `ttyd` so every session exposes a web terminal.
 2. **`web-manager`** (`webapp/`) — a self-contained [TanStack Start](https://tanstack.com/start) + [Nitro](https://nitro.build/) app (React SSR + API + SSE + WebSocket terminal proxy on one port, ports-and-adapters core) that lets an authenticated user register **Accounts** and spin up, stop, reset, and destroy many `claude-agent` containers ("Sessions") from a browser, each with its own isolated workspace volume and a built-in web terminal.
 
 The `webapp/` has a full test/lint/type gate (`pnpm test`/`lint`/`check`) run in CI on every PR that touches it (`.github/workflows/ci.yml`); the framework-free `src/core/` is 100% test-driven. The Docker half (images, entrypoints, compose, Caddy) has no automated suite — validate those changes by running the stack (see below) and exercising the affected flow manually.
@@ -75,9 +75,19 @@ The GitHub access token is retrieved server-side (`auth.api.getAccessToken`) and
 
 ### `entrypoint.sh` — User Identity Adapter
 
-Runs as root first specifically to `usermod`/`groupmod` the container's `node` user to match host `PUID`/`PGID`, then re-execs itself via `gosu node` so everything after that point (git config, cloning, launching `claude`) runs unprivileged. This is what keeps files written into `/workspace` owned by the host user instead of root. It also: restores `~/.claude.json` from `~/.claude/backups/` if missing, marks `/workspace` as a trusted project and sets `permissions.defaultMode` directly in `~/.claude.json` via a small inline Node script, then execs `claude --remote-control[=SESSION_NAME] --permission-mode=$PERMISSION_MODE` (with `--session-id` pinned when `SESSION_UUID` is set, for remote-control pairing persistence across recreations).
+Runs as root first specifically to `usermod`/`groupmod` the container's `node` user to match host `PUID`/`PGID`, then re-execs itself via `gosu node` so everything after that point (git config, cloning, launching `claude`) runs unprivileged. This is what keeps files written into `/workspace` owned by the host user instead of root. It also: restores `~/.claude.json` from `~/.claude/backups/` if missing, and via a small inline Node script marks `/workspace` as a trusted project, sets `permissions.defaultMode`, `hasCompletedOnboarding` and a default `theme` (every first-run modal blocks startup before Claude reaches the Remote Control bridge, and no one can answer a prompt in a headless container), and sets `remoteControlAtStartup`.
 
-**Keep the root-block chowns narrow.** They are scoped to `/home/node/.local` (the `claude` symlink root creates) plus a single non-recursive `chown` of the `$ACCOUNT_CONFIG_DIR` mount point (a fresh Docker volume is root-owned there, so the node user could not otherwise write into it). A blanket `chown -R /home/node` — what this used to do — recurses into whatever is mounted under HOME, so it walked the Account Config Volume on **every** container start; back when `claude-local` bind-mounted the host's `~/.claude` it walked that too, which is what made starts slow and silently rewrote host file ownership. `usermod -u` already re-owns home-tree files belonging to the old uid, so the recursion bought nothing.
+### Remote Control lives in a tmux session, not in the web terminal
+
+`entrypoint.sh` starts the agent **detached in tmux** (`$TMUX_AGENT_SESSION`, defined once as an `ENV` in the Dockerfile) before `exec`ing the container CMD, running `agent-session.sh` → `claude --remote-control=$SESSION_NAME --session-id=$SESSION_UUID --permission-mode=$PERMISSION_MODE` (the `--session-id` pin is what keeps the Remote Control pairing across recreations). `console-entrypoint.sh`, which is what `ttyd` spawns, **attaches** to that session rather than starting Claude.
+
+That split is the whole point: `ttyd -W <cmd>` runs its command **once per connected client**, so an agent started from `console-entrypoint.sh` would only exist while somebody had the browser tab open, and would die on close — Remote Control would never come up on its own. With tmux, Claude is alive for as long as the container is, the web terminal shows the *same* Claude that Remote Control is paired with, and closing the tab merely detaches.
+
+`SESSION_NAME` is the discriminator for "this is an agent Session". A **Login Container** has no Session identity and so gets no tmux session; `console-entrypoint.sh` falls through to a plain interactive `claude`, which is what drives its OAuth login.
+
+### Keep the root-block chowns narrow
+
+They are scoped to `/home/node/.local` (the `claude` symlink root creates) plus a single non-recursive `chown` of the `$ACCOUNT_CONFIG_DIR` mount point (a fresh Docker volume is root-owned there, so the node user could not otherwise write into it). A blanket `chown -R /home/node` — what this used to do — recurses into whatever is mounted under HOME, so it walked the Account Config Volume on **every** container start; back when `claude-local` bind-mounted the host's `~/.claude` it walked that too, which is what made starts slow and silently rewrote host file ownership. `usermod -u` already re-owns home-tree files belonging to the old uid, so the recursion bought nothing.
 
 ### Auto Mode
 

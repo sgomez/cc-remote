@@ -121,9 +121,17 @@ try {
   if (!config.permissions) config.permissions = {};
   config.permissions.defaultMode = process.env.PERMISSION_MODE || "auto";
 
-  // Claude prompts for a theme whenever this key is absent, even with
-  // onboarding marked complete — that modal blocks a remote/ttyd session.
-  // Only default it: a theme the user picked themselves must survive.
+  // Belt to the --remote-control flag in agent-session.sh: any `claude` started
+  // by hand inside the container (fallback shell, manual restart) also brings the
+  // Remote Control bridge up instead of sitting unreachable.
+  config.remoteControlAtStartup = true;
+
+  // Any blocking first-run modal stops Claude before it reaches the Remote
+  // Control bridge, so neither of these may be left to chance in a container the
+  // user cannot answer prompts in. The theme is asked for separately from
+  // onboarding, so both keys are needed. Default the theme rather than force it:
+  // a theme the user picked themselves must survive.
+  config.hasCompletedOnboarding = true;
   if (!config.theme) config.theme = "dark";
 
   fs.writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
@@ -133,15 +141,26 @@ try {
 }
 '
 
-# Execute the default command (interceptor for session UUID & name persistence)
-if [ "$1" = "claude" ] && [ "$2" = "--remote-control" ]; then
-    if [ -n "$SESSION_UUID" ]; then
-        echo " [Info] Starting Remote Control session: $SESSION_NAME (UUID: $SESSION_UUID) in ${PERMISSION_MODE:-auto} mode"
-        exec claude --session-id="$SESSION_UUID" --remote-control="$SESSION_NAME" --permission-mode="${PERMISSION_MODE:-auto}"
-    else
-        echo " [Info] Starting Remote Control session: $SESSION_NAME (Dynamic Session ID) in ${PERMISSION_MODE:-auto} mode"
-        exec claude --remote-control="$SESSION_NAME" --permission-mode="${PERMISSION_MODE:-auto}"
-    fi
-else
-    exec "$@"
+# Start the agent in a detached tmux session, so `claude` (and with it the Remote
+# Control bridge) is alive for as long as the container is — independently of
+# whether anyone has the web terminal open. ttyd spawns its command once per
+# connected client, so leaving Claude to console-entrypoint.sh would mean a
+# Session only ran while a browser tab watched it. console-entrypoint.sh attaches
+# to this session instead of starting a second Claude.
+#
+# SESSION_NAME is the discriminator for "this is an agent Session": a Login
+# Container has no Session identity, and must keep getting a plain interactive
+# `claude` from console-entrypoint.sh so its OAuth login can run.
+if [ -n "$SESSION_NAME" ]; then
+    echo " [Info] Starting Remote Control session: $SESSION_NAME (UUID: ${SESSION_UUID:-dynamic}) in ${PERMISSION_MODE:-auto} mode"
+    # -u forces UTF-8 regardless of what tmux infers from the locale: without it
+    # every non-ASCII glyph in Claude's TUI comes out as "_". Size the detached
+    # window generously too — until a client attaches, tmux would default to 80x24
+    # and Claude would render its TUI wrapped to that.
+    tmux -u new-session -d -s "$TMUX_AGENT_SESSION" -x 200 -y 50 /usr/local/bin/agent-session.sh
+    tmux set-option -g default-terminal "xterm-256color"
+    tmux set-option -g status off
+    tmux set-option -g history-limit 10000
 fi
+
+exec "$@"
