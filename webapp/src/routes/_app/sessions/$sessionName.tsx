@@ -127,8 +127,8 @@ function SessionDetailPage() {
         <div className="panel error">
           <h2 className="error-text">Clone failed</h2>
           <p className="subtle">
-            The clone helper container exited non-zero. Check the repo exists and your token can
-            read it, then retry (re-runs the two-phase clone).
+            Cloning the repository failed. Check that the repo exists and your GitHub token can read
+            it, then retry.
           </p>
           <div className="actions">
             <button

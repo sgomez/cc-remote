@@ -1,8 +1,9 @@
 // Sessions list (#16). Loader seeds the session + account snapshots; the list
 // then tracks the #15 SSE stream live so a `cloning`→`running`/`clone_failed`
 // transition morphs in place. Each card carries per-element
-// view-transition-names for the list→detail morph. "New session" is disabled
-// until at least one ready Account exists.
+// view-transition-names for the list→detail morph. "New session" always links
+// through to /sessions/new, which explains itself when there's no ready
+// Account yet.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { listAccounts } from "~/server/accounts";
@@ -35,7 +36,7 @@ function SessionsPage() {
           </h1>
           <p className="subtle">One agent container and workspace volume per session.</p>
         </div>
-        <Link to="/sessions/new" className="btn primary" aria-disabled={!hasReadyAccount}>
+        <Link to="/sessions/new" className="btn primary">
           + New session
         </Link>
       </div>

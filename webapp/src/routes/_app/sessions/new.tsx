@@ -1,17 +1,21 @@
 // New-session flow (#16): repo + Account → two-phase provision (clone helper →
 // agent container). The Account picker is radio cards with `pending_login`
-// accounts greyed out (shown, not hidden). The repo is entered as `owner/name`
-// (validated against the domain repo shape) with a native autocomplete of the
-// user's GitHub repos (loaded server-side, `listRepos`). On submit the
-// create-session use case runs server-side and the user lands on the new
-// session's detail page, where the clone streams.
+// accounts greyed out (shown, not hidden); it tracks the #15 accounts SSE
+// stream live so an Account completing OAuth login in another tab enables its
+// radio without a reload. The repo is entered as `owner/name` (validated
+// against the domain repo shape) with a native autocomplete of the user's
+// GitHub repos (loaded server-side, `listRepos`). On submit the create-session
+// use case runs server-side and the user lands on the new session's detail
+// page, where the clone streams.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
+import type { AccountStatus } from "~/core";
 import { listAccounts } from "~/server/accounts";
 import { listRepos } from "~/server/github";
 import { createSession, listSessions } from "~/server/sessions";
 import { ProviderBadge, StatusPill } from "~/ui/components/badges";
+import { useLiveSnapshot } from "~/ui/live/live-status";
 import { accountStatusBadge } from "~/ui/view-models/badges";
 import {
   accountPickerOptions,
@@ -20,6 +24,8 @@ import {
   sessionNameState,
 } from "~/ui/view-models/forms";
 import type { AccountRow } from "~/ui/view-models/rows";
+
+type LiveStatus = { id: string; status: AccountStatus };
 
 export const Route = createFileRoute("/_app/sessions/new")({
   loader: async () => {
@@ -43,10 +49,18 @@ function NewSessionPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const seed: LiveStatus[] = accounts.map((a) => ({ id: a.id, status: a.status }));
+  const live = useLiveSnapshot<LiveStatus[]>("/api/accounts/status", "accounts", seed);
+  const statusById = new Map(live.map((l) => [l.id, l.status]));
+  const liveAccounts = (accounts as AccountRow[]).map((a) => ({
+    ...a,
+    status: statusById.get(a.id) ?? a.status,
+  }));
+
   const existingNames = sessions.map((s) => s.name);
   const nameState = sessionNameState(name, existingNames);
-  const options = accountPickerOptions(accounts as AccountRow[]);
-  const selected = accounts.find((a) => a.id === accountId);
+  const options = accountPickerOptions(liveAccounts);
+  const selected = liveAccounts.find((a) => a.id === accountId);
   const valid = canCreateSession({ nameState, repo, selectedAccount: selected });
 
   const create = async () => {
@@ -68,7 +82,9 @@ function NewSessionPage() {
           <h1>
             <span className="path">~/sessions/</span>new
           </h1>
-          <p className="subtle">Repo + account → clone helper container → agent container.</p>
+          <p className="subtle">
+            Clone a repo and start an agent container with one of your accounts.
+          </p>
         </div>
         <Link to="/sessions" className="btn">
           ← Back
@@ -157,11 +173,6 @@ function NewSessionPage() {
           <button type="button" className="btn primary" disabled={!valid || busy} onClick={create}>
             {busy ? "Creating…" : "Create session"}
           </button>
-          {selected && selected.status !== "ready" && (
-            <span className="warn-text" style={{ fontSize: 12 }}>
-              That account is still pending_login
-            </span>
-          )}
         </div>
       </div>
     </>

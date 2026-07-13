@@ -129,9 +129,8 @@ function TypeForm({ typeId }: { typeId: string }) {
           <strong className="warn-text">Next step: Login Container.</strong>
           <p className="subtle" style={{ margin: "6px 0 0" }}>
             After creating the account you will complete <code className="inline">claude</code>{" "}
-            login in an ephemeral container's web terminal. The account stays{" "}
-            <code className="inline">pending_login</code> until credentials appear in its config
-            volume.
+            login in an ephemeral container's web terminal. The account stays at pending login until
+            credentials appear in its config volume.
           </p>
         </div>
       )}
