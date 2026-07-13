@@ -80,15 +80,15 @@ function NewSessionPage() {
       <div className="page-head">
         <div>
           <h1>
-            <span className="path">~/sessions/</span>new
+            <Link to="/sessions" className="path">
+              ~/sessions/
+            </Link>
+            new
           </h1>
           <p className="subtle">
             Clone a repo and start an agent container with one of your accounts.
           </p>
         </div>
-        <Link to="/sessions" className="btn">
-          ← Back
-        </Link>
       </div>
 
       <div className="panel" style={{ maxWidth: 640 }}>

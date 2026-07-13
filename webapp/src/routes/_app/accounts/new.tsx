@@ -27,13 +27,13 @@ function NewAccountPage() {
       <div className="page-head">
         <div>
           <h1>
-            <span className="path">~/accounts/</span>new
+            <Link to="/accounts" className="path">
+              ~/accounts/
+            </Link>
+            new
           </h1>
           <p className="subtle">Register a provider account.</p>
         </div>
-        <Link to="/accounts" className="btn">
-          ← Back
-        </Link>
       </div>
 
       <div className="steps">

@@ -15,7 +15,7 @@ import {
   startSession,
   stopSession,
 } from "~/server/sessions";
-import { ProviderBadge, StatusPill } from "~/ui/components/badges";
+import { StatusPill } from "~/ui/components/badges";
 import { type ConfirmOptions, useFeedback } from "~/ui/components/feedback";
 import { Spinner } from "~/ui/components/Spinner";
 import { Terminal } from "~/ui/components/Terminal";
@@ -23,6 +23,7 @@ import { useLiveSnapshot } from "~/ui/live/live-status";
 import { sessionStatusBadge } from "~/ui/view-models/badges";
 import {
   remoteControlPanel,
+  type SessionActionButton,
   type SessionActionKind,
   sessionActionState,
 } from "~/ui/view-models/capabilities";
@@ -107,17 +108,40 @@ function SessionDetailPage() {
     }
   };
 
+  // One renderer for every lifecycle button; the action row splits them into
+  // a plain group and a right-aligned danger zone by the confirm flag.
+  const actionButton = (b: SessionActionButton) => (
+    <button
+      key={b.action}
+      type="button"
+      className={`btn${b.action === "destroy" ? " danger" : ""}`}
+      disabled={b.disabled}
+      onClick={() => runAction(b.action)}
+    >
+      {b.busy && <Spinner />}
+      {b.label}
+    </button>
+  );
+
   return (
     <>
       <div className="page-head" style={{ viewTransitionName: `sess-card-${session.name}` }}>
         <div>
-          <h1 style={{ viewTransitionName: `sess-title-${session.name}` }}>
-            <span className="path">~/sessions/</span>
-            {session.name}
+          <h1>
+            <Link to="/sessions" className="path">
+              ~/sessions/
+            </Link>
+            <span style={{ viewTransitionName: `sess-title-${session.name}` }}>{session.name}</span>
           </h1>
           <p className="subtle">
-            {session.repo} · account: {account?.displayName ?? session.accountId}{" "}
-            {account && <ProviderBadge providerType={account.providerType} />}
+            {session.repo} · account:{" "}
+            {account ? (
+              <Link to="/accounts/$accountId" params={{ accountId: session.accountId }}>
+                {account.displayName}
+              </Link>
+            ) : (
+              session.accountId
+            )}
           </p>
         </div>
         <StatusPill badge={badge} vtName={`sess-status-${session.name}`} />
@@ -177,27 +201,8 @@ function SessionDetailPage() {
       </div>
 
       <div className="actions">
-        <Link to="/sessions" className="btn">
-          ← Back
-        </Link>
-        <span className="spacer" />
-        {buttons.map((b) => (
-          <button
-            key={b.action}
-            type="button"
-            className={`btn${b.action === "destroy" ? " danger" : ""}`}
-            disabled={b.disabled}
-            title={
-              b.action === "reset"
-                ? "Destroys container + workspace volume, re-clones with a fresh session UUID"
-                : undefined
-            }
-            onClick={() => runAction(b.action)}
-          >
-            {b.busy && <Spinner />}
-            {b.label}
-          </button>
-        ))}
+        {buttons.filter((b) => !b.confirm).map(actionButton)}
+        <span className="danger-zone">{buttons.filter((b) => b.confirm).map(actionButton)}</span>
       </div>
     </>
   );

@@ -88,13 +88,14 @@ function AccountDetailPage() {
     <>
       <div className="page-head" style={{ viewTransitionName: `acct-card-${account.id}` }}>
         <div>
-          <h1 style={{ viewTransitionName: `acct-title-${account.id}` }}>
-            <span className="path">~/accounts/</span>
-            {account.displayName}
+          <h1>
+            <Link to="/accounts" className="path">
+              ~/accounts/
+            </Link>
+            <span style={{ viewTransitionName: `acct-title-${account.id}` }}>
+              {account.displayName}
+            </span>
           </h1>
-          <p className="subtle">
-            <ProviderBadge providerType={account.providerType} />
-          </p>
         </div>
         <StatusPill badge={badge} vtName={`acct-status-${account.id}`} />
       </div>
@@ -174,26 +175,17 @@ function AccountDetailPage() {
       </div>
 
       <div className="actions">
-        <Link to="/accounts" className="btn">
-          ← Back
-        </Link>
-        <span className="spacer" />
         <button
           type="button"
           className="btn danger"
           disabled={!guard.deletable || deleting}
-          title={guard.deletable ? "Deletes the account and its config volume" : guard.reason}
           onClick={remove}
         >
           {deleting && <Spinner />}
-          {deleting ? "Deleting…" : "Delete account + volume"}
+          {deleting ? "Deleting…" : "Delete account"}
         </button>
+        {!guard.deletable && <span className="hint">{guard.reason}</span>}
       </div>
-      {!guard.deletable && (
-        <p className="subtle" style={{ textAlign: "right" }}>
-          {guard.reason}
-        </p>
-      )}
     </>
   );
 }

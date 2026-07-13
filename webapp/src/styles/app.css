@@ -216,6 +216,13 @@ code.inline {
   font-family: var(--font-mono);
   font-weight: 500;
 }
+h1 a.path {
+  text-decoration: none;
+}
+h1 a.path:hover {
+  color: var(--primary);
+  text-decoration: none;
+}
 .subtle {
   color: var(--text-muted);
   font-size: 0.9rem;
@@ -517,6 +524,11 @@ code.inline {
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+.actions .danger-zone {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 12px;
 }
 
 .kv {
