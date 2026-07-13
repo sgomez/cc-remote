@@ -9,13 +9,18 @@ export function getRouter() {
   return createRouter({
     routeTree,
     // Every navigation runs through the View Transitions API
-    // (document.startViewTransition) for list→detail morphs (#16). We pass a
-    // typed transition so CSS can distinguish list↔detail "morph" from
-    // forward/backward stack moves via :active-view-transition-type. The router
-    // feature-detects that support and falls back to a plain cross-fade;
-    // returning false skips the transition entirely (same-path / reduced motion).
-    // Baseline across Chrome/Safari/Firefox (Firefox 144+; typed transitions
-    // Firefox 147+).
+    // (document.startViewTransition) for list→detail morphs (#16). The shared
+    // element morphs (sess-card-*/sess-title-*/…) are what carry the effect and
+    // need none of this.
+    //
+    // The `types` branch below is a progressive enhancement that is currently
+    // INERT: the router only passes types when
+    // `CSS.supports("selector(:active-view-transition-type(a))")` is true, and
+    // as of 2026-07 neither Chrome 149 nor Firefox 152 report support (verified
+    // by logging what the router hands to startViewTransition — a bare function,
+    // not `{update, types}`). It degrades to a plain cross-fade, so the
+    // :active-view-transition-type rules in app.css are dormant until engines
+    // report support. Don't add motion that depends on them.
     defaultViewTransition: {
       types: ({ fromLocation, toLocation, pathChanged }) => {
         if (!pathChanged || reduceMotion()) return false;

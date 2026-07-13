@@ -10,7 +10,7 @@
 // EventSource only exists in the browser, so the subscription lives entirely in
 // an effect and SSR renders the seeded snapshot.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 type DocumentWithVT = Document & {
@@ -41,41 +41,68 @@ export function commitWithTransition(mutate: () => void): void {
   }
 }
 
+/** Comparison key for a snapshot. Both sides go through the same serializer, so
+ * key order is stable and string equality means "no visible change". */
+export function snapshotKey(value: unknown): string {
+  return JSON.stringify(value);
+}
+
 /**
  * Decide what to do with an incoming raw SSE payload. Returns the parsed
- * snapshot to apply, or `null` to skip — either because the payload is byte-for-
- * byte identical to the last applied one (re-committing it would start a no-op
- * view transition) or because it failed to parse. Pure so it's unit-testable
- * without a DOM.
+ * snapshot plus its comparison key, or `null` to skip — either because it
+ * carries no change from the last applied snapshot or because it failed to
+ * parse. Skipping matters for more than efficiency: committing a no-op inside
+ * `startViewTransition` starts a *second* transition, and a new transition
+ * cancels whichever one is still running — including the router's navigation
+ * transition. Pure so it's unit-testable without a DOM.
  */
 export function parseNextSnapshot<T>(
   data: string,
-  lastData: string | undefined,
-): { value: T } | null {
-  if (data === lastData) return null;
+  lastKey: string | undefined,
+): { value: T; key: string } | null {
+  let value: T;
   try {
-    return { value: JSON.parse(data) as T };
+    value = JSON.parse(data) as T;
   } catch {
     return null;
   }
+  const key = snapshotKey(value);
+  return key === lastKey ? null : { value, key };
 }
 
 /**
  * Subscribe to a named SSE event on `path`, returning the latest JSON snapshot
- * (seeded with `initial` until the first message). Each update is applied inside
- * a View Transition so dependent badges morph.
+ * (seeded with `initial` until a *differing* message arrives). Each real change
+ * is applied inside a View Transition so dependent badges morph.
+ *
+ * The stream's opening message is applied WITHOUT a transition. It is a replay of
+ * the state the route loader already rendered, so there is nothing to animate —
+ * and animating it is actively harmful: starting a view transition cancels any
+ * transition still running, which milliseconds after a navigation means the
+ * router's own transition. That is what made list→detail morphs vanish.
+ *
+ * Deduping on the key alone is not enough, because a page may seed from a
+ * narrower slice than the stream sends (the account detail page seeds one
+ * account; the stream sends every account). Such a seed can never match, so the
+ * first message must be excluded by position, not just by value.
  */
 export function useLiveSnapshot<T>(path: string, event: string, initial: T): T {
   const [snapshot, setSnapshot] = useState<T>(initial);
+  const lastKey = useRef<string>(snapshotKey(initial));
+  const opened = useRef(false);
 
   useEffect(() => {
     const source = new EventSource(path);
-    // Track the last raw payload so redundant re-sends don't re-commit.
-    let lastData: string | undefined;
     const onMessage = (ev: MessageEvent) => {
-      const next = parseNextSnapshot<T>(ev.data, lastData);
+      const next = parseNextSnapshot<T>(ev.data, lastKey.current);
+      const isOpening = !opened.current;
+      opened.current = true;
       if (!next) return;
-      lastData = ev.data;
+      lastKey.current = next.key;
+      if (isOpening) {
+        setSnapshot(next.value);
+        return;
+      }
       commitWithTransition(() => setSnapshot(next.value));
     };
     source.addEventListener(event, onMessage);
