@@ -129,6 +129,33 @@ function wasSignalled(exitCode: number): boolean {
 }
 
 /**
+ * Whether a container already in `state` is effectively stopped, so a
+ * `stopContainer` call against it would be redundant — and, against a real
+ * engine, exactly the "already stopped" 304 that Docker's stop endpoint
+ * throws on (see the adapter's `stopContainer`). `created` never ran,
+ * `exited`/`dead` are terminal, `removing` is already on its way out.
+ *
+ * `restarting` and `paused` are deliberately NOT included: Docker's `Running`
+ * flag is still true for both (paused is a frozen-but-running container,
+ * restarting is mid crash-loop), so a stop call against them is not
+ * redundant — it is what actually brings the container down. `unknown` is
+ * excluded too, on purpose: the domain never assumes an unrecognized state is
+ * already safe to skip (see `toSessionStatus`'s comment on why an engine
+ * state we don't know about must not be silently read as "stopped").
+ */
+export function isAlreadyStopped(state: ContainerState): boolean {
+  switch (state) {
+    case "created":
+    case "exited":
+    case "dead":
+    case "removing":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
  * Derive a Session status from a labelled container. The single derivation
  * point: every surface (the list, the SSE stream, the account detail rows)
  * comes through here, so a Session can never be described two ways.

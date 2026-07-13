@@ -4,7 +4,11 @@
 // the real port contract rather than asserting call shapes.
 
 import type { LoginContainer } from "../src/core/domain/login";
-import type { ContainerState, SessionContainer } from "../src/core/domain/session";
+import {
+  type ContainerState,
+  isAlreadyStopped,
+  type SessionContainer,
+} from "../src/core/domain/session";
 import type { WorkspaceGitProbe } from "../src/core/domain/workspace-state";
 import type {
   CloneContainerSpec,
@@ -199,12 +203,21 @@ export class FakeContainerEngine implements ContainerEngine {
 
   async stopContainer(sessionName: string): Promise<void> {
     const c = this.main.get(sessionName);
-    if (c) {
-      c.state = "exited";
-      // What a real `docker stop` leaves on the agent: PID1 doesn't handle
-      // SIGTERM, so Docker SIGKILLs it after the timeout (128 + 9).
-      c.exitCode = 137;
+    if (!c) return;
+    if (isAlreadyStopped(c.state)) {
+      // Mirrors what a real engine does: dockerode's `.stop()` rejects with
+      // `statusCode: 304` for a container Docker considers already stopped.
+      // A use case that skips the `isAlreadyStopped` guard before calling
+      // `stopContainer` must see this fail, or the guard's test is vacuous.
+      throw Object.assign(
+        new Error(`stopContainer(${sessionName}): container already stopped (state=${c.state})`),
+        { statusCode: 304 },
+      );
     }
+    c.state = "exited";
+    // What a real `docker stop` leaves on the agent: PID1 doesn't handle
+    // SIGTERM, so Docker SIGKILLs it after the timeout (128 + 9).
+    c.exitCode = 137;
   }
 
   async removeContainer(sessionName: string): Promise<void> {

@@ -46,6 +46,22 @@ function isNotFound(err: unknown): boolean {
 }
 
 /**
+ * dockerode's `.stop()` rejects with HTTP 304 when Docker considers the
+ * container already stopped. The core's `stop-session` use case already
+ * skips the call for a container it knows is stopped (`isAlreadyStopped`),
+ * but that check and this one race: the container can exit on its own (crash,
+ * OOM) in the gap between the use case's `getSessionContainer` inspect and
+ * this `.stop()` call. That race cannot be closed in core, so the adapter
+ * swallows ONLY a 304 here — the desired end state (not running) already
+ * holds, so it is a success, not an error. Every other status propagates.
+ */
+function isAlreadyStoppedError(err: unknown): boolean {
+  return (
+    typeof err === "object" && err !== null && (err as { statusCode?: number }).statusCode === 304
+  );
+}
+
+/**
  * The workspace git probe (I2). Runs as the unprivileged `node` user (via the
  * exec `User`): `git status --porcelain`, a separator line, then the count of
  * commits ahead of `@{upstream}` (which fails silently with no upstream, leaving
@@ -133,7 +149,11 @@ export class DockerContainerEngine implements ContainerEngine {
   }
 
   async stopContainer(sessionName: string): Promise<void> {
-    await this.guardedSession(sessionName).stop();
+    try {
+      await this.guardedSession(sessionName).stop();
+    } catch (err) {
+      if (!isAlreadyStoppedError(err)) throw err;
+    }
   }
 
   async removeContainer(sessionName: string): Promise<void> {

@@ -2,7 +2,10 @@
 // only places the exit code can enter the system, and they read it from two
 // different dockerode shapes — `inspect` (State.ExitCode) and `listContainers`
 // (no exit-code field at all, only the `Status` string). Both are unit-tested
-// here; the write paths stay in the Docker-requiring integration suite.
+// here; the write paths' Docker *behaviour* (does `.stop()` actually stop the
+// container?) stays in the Docker-requiring integration suite. `stopContainer`'s
+// 304-swallowing is pure error-mapping logic, not Docker behaviour, so it is
+// exercised here too against a stubbed `.stop()`.
 
 import type Docker from "dockerode";
 import { describe, expect, it } from "vitest";
@@ -84,5 +87,35 @@ describe("listSessionContainers (the list path)", () => {
       ["exited", 3],
       ["running", null],
     ]);
+  });
+});
+
+describe("stopContainer (304 handling)", () => {
+  /** A dockerode whose `getContainer().stop()` rejects with a canned error. */
+  function dockerStoppingWith(error: unknown): Docker {
+    return {
+      getContainer: () => ({
+        stop: async () => {
+          throw error;
+        },
+      }),
+    } as unknown as Docker;
+  }
+
+  it("swallows a 304 (Docker's 'already stopped') as success", async () => {
+    const engine = engineOver(dockerStoppingWith({ statusCode: 304, message: "not modified" }));
+    await expect(engine.stopContainer("demo")).resolves.toBeUndefined();
+  });
+
+  it("still propagates every other error, e.g. a 500", async () => {
+    const error = { statusCode: 500, message: "daemon error" };
+    const engine = engineOver(dockerStoppingWith(error));
+    await expect(engine.stopContainer("demo")).rejects.toBe(error);
+  });
+
+  it("propagates an error with no statusCode at all", async () => {
+    const error = new Error("socket hang up");
+    const engine = engineOver(dockerStoppingWith(error));
+    await expect(engine.stopContainer("demo")).rejects.toBe(error);
   });
 });
