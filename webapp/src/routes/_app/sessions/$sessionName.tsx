@@ -7,12 +7,19 @@
 // tracks the #15 SSE stream live.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { requireProviderType, type WorkspaceState } from "~/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  DEFAULT_LOG_TAIL,
+  requireProviderType,
+  type SessionLogs,
+  type SessionStatus,
+  type WorkspaceState,
+} from "~/core";
 import { listAccounts } from "~/server/accounts";
 import {
   destroySession,
   listSessions,
+  readSessionLogs,
   readWorkspaceState,
   resetSession,
   startSession,
@@ -67,6 +74,86 @@ function WorkspaceLossNotice({ sessionName }: { sessionName: string }) {
   const summary = workspaceSummary(state);
   return (
     <span className={`workspace-notice${summary.dirty ? " warn-text" : ""}`}>{summary.text}</span>
+  );
+}
+
+/**
+ * Container logs — the "why didn't it come up?" panel. Shown for EVERY status,
+ * including `error`, `stopped` and `clone_failed`: a container that isn't
+ * running has no web terminal to attach to, so its output is the only evidence
+ * the user has, and that is precisely the case this panel exists for. For a
+ * failed clone the core use case falls back to the clone helper, and we say so
+ * rather than passing the git error off as the agent's own output.
+ *
+ * Never renders a blank box: empty logs and a failed read each get their own
+ * honest message.
+ */
+function SessionLogsPanel({ sessionName, status }: { sessionName: string; status: SessionStatus }) {
+  const [logs, setLogs] = useState<SessionLogs | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const outputRef = useRef<HTMLPreElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setLogs(await readSessionLogs({ data: { name: sessionName } }));
+      setError(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionName]);
+
+  // Reload when the session transitions (a crash or a finished clone changes
+  // what there is to read), not only on mount.
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Newest output is what matters, so land on the tail of it — after each load,
+  // not on mount (at mount there is nothing rendered to scroll).
+  useEffect(() => {
+    const el = outputRef.current;
+    if (!el || logs === null) return;
+    el.scrollTop = el.scrollHeight;
+  }, [logs]);
+
+  return (
+    <div className="panel">
+      <div className="logs-head">
+        <h2>Logs</h2>
+        <button type="button" className="btn small" disabled={loading} onClick={() => void load()}>
+          {loading && <Spinner />}
+          {loading ? "Loading…" : "Refresh"}
+        </button>
+      </div>
+
+      <p className="subtle tight">
+        {logs?.source === "clone"
+          ? `Last ${DEFAULT_LOG_TAIL} lines from the clone helper — the repository clone's own output.`
+          : `Last ${DEFAULT_LOG_TAIL} lines of the session container's output.`}
+      </p>
+
+      {error !== null ? (
+        <p className="error-text">Couldn't read the logs: {error}</p>
+      ) : logs === null ? (
+        <p className="subtle">
+          <Spinner /> Reading container logs…
+        </p>
+      ) : logs.text.trim() === "" ? (
+        <p className="subtle">
+          {status === "cloning"
+            ? "The clone helper hasn't produced any output yet."
+            : "This container hasn't logged anything yet."}
+        </p>
+      ) : (
+        <pre ref={outputRef} className="logs-output">
+          {logs.text}
+        </pre>
+      )}
+    </div>
   );
 }
 
@@ -241,6 +328,8 @@ function SessionDetailPage() {
           </p>
         )}
       </div>
+
+      <SessionLogsPanel sessionName={session.name} status={session.status} />
 
       <div className="panel">
         <h2>Remote Control</h2>

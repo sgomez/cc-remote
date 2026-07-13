@@ -12,10 +12,12 @@ import {
   makeCreateSession,
   makeDestroySession,
   makeListSessions,
+  makeReadSessionLogs,
   makeReadWorkspaceState,
   makeResetSession,
   makeStartSession,
   makeStopSession,
+  type SessionLogs,
   type WorkspaceState,
 } from "~/core";
 import type { SessionRow } from "~/ui/view-models/rows";
@@ -69,6 +71,23 @@ export const readWorkspaceState = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<WorkspaceState> => {
     await guard();
     return makeReadWorkspaceState({ engine: containerEngine() })({ name: data.name });
+  });
+
+/**
+ * Container logs for the session detail page's Logs panel. Deliberately NOT
+ * gated on the container running: a crashed agent or a failed clone is exactly
+ * when the user needs this, and for a `clone_failed` session the core use case
+ * falls back to the clone helper (whose output is the git error). Label-guarded
+ * and auth-guarded like every other session read.
+ */
+export const readSessionLogs = createServerFn({ method: "GET" })
+  .validator((data: { name: string; tail?: number }) => data)
+  .handler(async ({ data }): Promise<SessionLogs> => {
+    await guard();
+    return makeReadSessionLogs({ engine: containerEngine() })({
+      name: data.name,
+      tail: data.tail,
+    });
   });
 
 export const startSession = createServerFn({ method: "POST" })

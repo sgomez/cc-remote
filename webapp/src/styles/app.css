@@ -362,6 +362,39 @@ h1 a.path:hover {
 .panel.narrow {
   max-width: 640px;
 }
+
+/* ---- container logs panel ------------------------------------------------ */
+/* The diagnostic surface for a session that did NOT come up, so it is rendered
+   for every status — including `error` and `clone_failed`, where there is no
+   live container and therefore no web terminal to fall back on. */
+.logs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.logs-head h2 {
+  margin-bottom: 0;
+}
+.logs-output {
+  margin-top: 12px;
+  padding: 12px 14px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  /* Deliberately dark in both themes: this is terminal output, and the agent
+     writes ANSI colours tuned for a dark background. */
+  background: #0b0f17;
+  color: #d7dce5;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
 .error-text {
   color: var(--danger);
 }
