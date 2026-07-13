@@ -9,8 +9,10 @@ import Docker from "dockerode";
 import type {
   CloneContainerSpec,
   ContainerEngine,
+  LogFollow,
   LoginContainer,
   LoginContainerSpec,
+  LogSink,
   SessionContainer,
   SessionContainerSpec,
   WorkspaceGitProbe,
@@ -35,6 +37,7 @@ import {
   buildSeedCreateOptions,
   buildSessionCreateOptions,
 } from "./container-specs";
+import { createDockerLogDecoder } from "./docker-log-decoder";
 
 function isNotFound(err: unknown): boolean {
   return (
@@ -172,6 +175,64 @@ export class DockerContainerEngine implements ContainerEngine {
     })) as unknown as Buffer;
 
     return decodeDockerLogs(Buffer.from(buffer));
+  }
+
+  /**
+   * Follow a session's container output live. Same label-guarded main-else-clone
+   * target as the one-shot read; `follow: true` makes dockerode hand back a live
+   * Readable instead of a buffer.
+   *
+   * Two things this must not get wrong:
+   *
+   *   - The wire format. We do NOT sniff it here — the container's own `Tty` flag
+   *     says which one Docker will send, and a follow's chunk boundaries fall
+   *     wherever they like, so the decoder is stateful (docker-log-decoder.ts).
+   *   - Teardown. `close()` destroys the socket and detaches the listeners, so a
+   *     closed modal (or a disconnected SSE client) leaves nothing behind. Docker
+   *     keeps a `follow` stream open for the life of the container, so leaking one
+   *     per modal open would accumulate sockets on a long-running server.
+   */
+  async followSessionLogs(
+    sessionName: string,
+    options: { tail: number },
+    sink: LogSink,
+  ): Promise<LogFollow> {
+    const info = await this.inspectSession(sessionName);
+    if (!info) throw new SessionNotFoundError(sessionName);
+
+    const stream = (await this.docker.getContainer(info.Id).logs({
+      stdout: true,
+      stderr: true,
+      tail: options.tail,
+      timestamps: false,
+      follow: true,
+    })) as unknown as NodeJS.ReadableStream & { destroy?: () => void };
+
+    const decoder = createDockerLogDecoder(info.Config.Tty === true);
+    let closed = false;
+
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      stream.removeAllListeners();
+      stream.destroy?.();
+    };
+
+    stream.on("data", (chunk: Buffer) => {
+      const text = decoder.push(chunk);
+      if (text !== "") sink.onChunk(text);
+    });
+    stream.on("error", (error: Error) => {
+      if (!closed) sink.onError(error);
+    });
+    stream.on("end", () => {
+      if (closed) return;
+      const rest = decoder.flush();
+      if (rest !== "") sink.onChunk(rest);
+      sink.onEnd();
+    });
+
+    return { close };
   }
 
   async runLoginContainer(spec: LoginContainerSpec): Promise<void> {

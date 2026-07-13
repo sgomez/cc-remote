@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 // Integration tests against a REAL Docker daemon. Kept OUT of the default
@@ -5,6 +6,11 @@ import { defineConfig } from "vitest/config";
 // runners). Run locally with `pnpm test:docker` — see
 // src/adapters/docker/README.md for prerequisites.
 export default defineConfig({
+  // The `~` alias mirrors tsconfig `paths`, so the server modules under test
+  // (src/server/log-stream.ts) resolve their imports the same way the app does.
+  resolve: {
+    alias: { "~": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   test: {
     include: ["test/**/*.integration.test.ts"],
     environment: "node",
