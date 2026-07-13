@@ -55,6 +55,16 @@ if [ -n "$GIT_USER_EMAIL" ]; then
     git config --global user.email "$GIT_USER_EMAIL"
 fi
 
+# Claude Code writes runtime artifacts into the repo's .claude/ while a session
+# runs (settings.local.json on permission grants, worktrees/ for agent
+# isolation). Ignore them globally so `git status` inside /workspace stays
+# clean in every cloned repo, whether or not it gitignores them itself.
+cat > /home/node/.gitignore_global <<'EOF'
+**/.claude/settings.local.json
+**/.claude/worktrees/
+EOF
+git config --global core.excludesFile /home/node/.gitignore_global
+
 # Account Config Volume: the whole volume is bind-mounted at $ACCOUNT_CONFIG_DIR (see
 # webapp src/adapters/docker), holding both the account's .claude/ dir and .claude.json.
 # Link ~/.claude and ~/.claude.json into it so writes (e.g. OAuth credentials from a
