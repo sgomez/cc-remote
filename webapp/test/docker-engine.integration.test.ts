@@ -18,7 +18,12 @@ import Docker from "dockerode";
 import { afterAll, describe, expect, it } from "vitest";
 import { configFromEnv } from "../src/adapters/docker/config";
 import { DockerContainerEngine } from "../src/adapters/docker/docker-container-engine";
-import { makeReadSessionLogs, SessionNotFoundError, wizardSkipConfig } from "../src/core";
+import {
+  makeFollowSessionLogs,
+  makeReadSessionLogs,
+  SessionNotFoundError,
+  wizardSkipConfig,
+} from "../src/core";
 
 const RUN = process.env.RUN_DOCKER_IT === "1";
 const suite = RUN ? describe : describe.skip;
@@ -142,6 +147,7 @@ const UNLABELLED_SESSION = `it-bare-${suffix}`;
 /** Frame-header bytes: what leaks into the text if the decoding is wrong. */
 const NUL = "\u0000";
 const SOH = "\u0001";
+const ESC = "\u001b";
 
 /** Run a throwaway container to completion, so it has logs but no life. */
 async function runToExit(opts: {
@@ -206,6 +212,13 @@ suite("DockerContainerEngine.readSessionLogs (real daemon)", () => {
 
   // Robustness against the OTHER wire format: a non-TTY container really is
   // multiplexed by Docker, so this proves the de-framing on live bytes.
+  //
+  // stdout and stderr are SEPARATE pipes, and Docker's frame order between them
+  // is not deterministic — ~1 run in 20 delivers the stderr frame first. So this
+  // asserts on what is actually guaranteed (both frames decode, headers are
+  // stripped) and accepts either legal interleaving. Asserting "stdout comes
+  // first" is what made this test flaky, not any timing race: the read already
+  // waits for the container to exit, after which its logs are complete.
   it("de-multiplexes a real non-TTY container's framed log stream", async () => {
     const name = `cc-remote-session-${LOG_SESSION}`;
     await docker
@@ -225,8 +238,10 @@ suite("DockerContainerEngine.readSessionLogs (real daemon)", () => {
     expect(text).toContain("stderr line");
     expect(text).not.toContain(NUL);
     expect(text).not.toContain(SOH);
-    // The header would otherwise render as a control char before the text.
-    expect(text.trimStart().startsWith("stdout line")).toBe(true);
+    // A leaked 8-byte header would show up as a control char ahead of the text,
+    // whichever frame Docker happened to deliver first.
+    expect(text.charCodeAt(0)).toBeGreaterThan(0x1f);
+    expect(["stdout line\nstderr line\n", "stderr line\nstdout line\n"]).toContain(text);
   });
 
   // A clone_failed session's ONLY container is the helper: its logs are the git
@@ -267,4 +282,113 @@ suite("DockerContainerEngine.readSessionLogs (real daemon)", () => {
       SessionNotFoundError,
     );
   });
+});
+
+// --- live log follow -------------------------------------------------------
+// The streaming path cannot be proven by unit tests: what matters is that real
+// output from a real container arrives INCREMENTALLY (not buffered until exit)
+// and that closing the follow actually tears the Docker socket down.
+
+const FOLLOW_SESSION = `it-follow-${suffix}`;
+
+suite("DockerContainerEngine.followSessionLogs (real daemon)", () => {
+  afterAll(async () => {
+    await docker
+      .getContainer(`cc-remote-session-${FOLLOW_SESSION}`)
+      .remove({ force: true })
+      .catch(() => {});
+  });
+
+  /** A container that keeps talking, so we can watch lines land over time. */
+  async function startChattyContainer(name: string): Promise<void> {
+    const c = await docker.createContainer({
+      name: `cc-remote-session-${name}`,
+      Image: config.agentImage,
+      Tty: true, // what container-specs.ts creates
+      Entrypoint: [],
+      Cmd: ["sh", "-c", 'i=1; while true; do echo "tick $i"; i=$((i+1)); sleep 1; done'],
+      Labels: sessionLabels(name),
+    });
+    await c.start();
+  }
+
+  it("streams a live container's output as it is produced, then tears down on close", async () => {
+    await startChattyContainer(FOLLOW_SESSION);
+
+    const chunks: { text: string; at: number }[] = [];
+    const started = Date.now();
+    const follow = await makeFollowSessionLogs({ engine })(
+      { name: FOLLOW_SESSION },
+      {
+        onChunk: (text) => chunks.push({ text, at: Date.now() - started }),
+        onError: () => {},
+        onEnd: () => {},
+      },
+    );
+
+    expect(follow.source).toBe("session");
+
+    // Wait for output to accumulate over time — the point is that we are not
+    // blocked until the container exits (it never does).
+    await new Promise((r) => setTimeout(r, 3500));
+    follow.follow.close();
+
+    const text = chunks.map((c) => c.text).join("");
+    expect(text).toContain("tick 1");
+    expect(text).toContain("tick 3");
+    // Genuinely incremental: the later ticks cannot have arrived in the first
+    // chunk, so their arrival times must be spread out, not all at t≈0.
+    const lastArrival = chunks.at(-1)?.at ?? 0;
+    expect(lastArrival).toBeGreaterThan(1000);
+    // Clean text, no framing bytes, no ANSI escapes (the core sanitized them).
+    expect(text).not.toContain(NUL);
+    expect(text).not.toContain(SOH);
+    expect(text).not.toContain(ESC);
+
+    // Teardown: nothing more may arrive after close(), or an SSE controller that
+    // the client has abandoned would be written to.
+    const seen = chunks.length;
+    await new Promise((r) => setTimeout(r, 2000));
+    expect(chunks.length).toBe(seen);
+  }, 20_000);
+
+  it("refuses to follow an unlabelled container", async () => {
+    await expect(
+      engine.followSessionLogs(
+        `ghost-${suffix}`,
+        { tail: 300 },
+        {
+          onChunk: () => {},
+          onError: () => {},
+          onEnd: () => {},
+        },
+      ),
+    ).rejects.toThrow(SessionNotFoundError);
+  });
+
+  it("ends the stream for a container that has already exited", async () => {
+    const name = `it-exited-${suffix}`;
+    await runToExit({
+      name: `cc-remote-session-${name}`,
+      script: "echo 'final words'; exit 1",
+      labels: sessionLabels(name),
+      tty: true,
+    });
+
+    const chunks: string[] = [];
+    const ended = new Promise<void>((resolve) => {
+      makeFollowSessionLogs({ engine })(
+        { name },
+        { onChunk: (t) => chunks.push(t), onError: () => {}, onEnd: () => resolve() },
+      );
+    });
+
+    await ended; // must not hang: Docker closes the follow on a dead container
+    expect(chunks.join("")).toContain("final words");
+
+    await docker
+      .getContainer(`cc-remote-session-${name}`)
+      .remove({ force: true })
+      .catch(() => {});
+  }, 15_000);
 });
