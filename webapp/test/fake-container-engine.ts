@@ -5,6 +5,7 @@
 
 import type { LoginContainer } from "../src/core/domain/login";
 import type { SessionContainer } from "../src/core/domain/session";
+import type { WorkspaceGitProbe } from "../src/core/domain/workspace-state";
 import type {
   CloneContainerSpec,
   ContainerEngine,
@@ -31,6 +32,16 @@ export class FakeContainerEngine implements ContainerEngine {
   private readonly logins = new Map<string, LoginContainer>();
   /** Exit code the next `awaitCloneExit` reports. */
   nextCloneExit = 0;
+  /**
+   * What the next `probeWorkspaceGit` yields: a raw probe, or an Error to throw
+   * (models an exec/infra failure). Defaults to a clean probe.
+   */
+  nextWorkspaceProbe: WorkspaceGitProbe | Error = {
+    exitCode: 0,
+    output: "--cc-remote-git-ahead--\n",
+  };
+  /** Session names `probeWorkspaceGit` was called with, for assertions. */
+  readonly probedWorkspaces: string[] = [];
   /** Records specs the use cases passed, for assertions. */
   readonly runSessionSpecs: SessionContainerSpec[] = [];
   readonly runCloneSpecs: CloneContainerSpec[] = [];
@@ -41,6 +52,11 @@ export class FakeContainerEngine implements ContainerEngine {
   /** Simulate a running main session container already existing. */
   seedRunningSession(c: { name: string; repo: string; accountId: string }): void {
     this.main.set(c.name, { ...c, state: "running", cloning: false });
+  }
+
+  /** Simulate a session mid-clone: only the running clone helper exists yet. */
+  seedCloningSession(c: { name: string; repo: string; accountId: string }): void {
+    this.clones.set(c.name, { ...c, state: "running", cloning: true });
   }
 
   /** Simulate credentials appearing in an Account Config Volume. */
@@ -117,6 +133,12 @@ export class FakeContainerEngine implements ContainerEngine {
 
   async removeContainer(sessionName: string): Promise<void> {
     this.main.delete(sessionName);
+  }
+
+  async probeWorkspaceGit(sessionName: string): Promise<WorkspaceGitProbe> {
+    this.probedWorkspaces.push(sessionName);
+    if (this.nextWorkspaceProbe instanceof Error) throw this.nextWorkspaceProbe;
+    return this.nextWorkspaceProbe;
   }
 
   async runLoginContainer(spec: LoginContainerSpec): Promise<void> {

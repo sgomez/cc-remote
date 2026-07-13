@@ -5,12 +5,13 @@
 // (reset/destroy) behind a confirmation. Status tracks the #15 SSE stream live.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
-import { requireProviderType } from "~/core";
+import { useEffect, useState } from "react";
+import { requireProviderType, type WorkspaceState } from "~/core";
 import { listAccounts } from "~/server/accounts";
 import {
   destroySession,
   listSessions,
+  readWorkspaceState,
   resetSession,
   startSession,
   stopSession,
@@ -28,9 +29,43 @@ import {
   sessionActionState,
 } from "~/ui/view-models/capabilities";
 import type { AccountRow, SessionRow } from "~/ui/view-models/rows";
+import { workspaceSummary } from "~/ui/view-models/workspace";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Uncommitted-work notice for the Destroy/Reset confirm dialogs (I2). Fetches
+ * the workspace git state when the dialog mounts it and fills in — it never
+ * blocks the dialog opening: while the probe is in flight it shows a loading
+ * placeholder, then the summary (dirty warnings styled amber). A probe failure
+ * degrades to a neutral "unknown", never a fake "clean".
+ */
+function WorkspaceLossNotice({ sessionName }: { sessionName: string }) {
+  const [state, setState] = useState<WorkspaceState | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    readWorkspaceState({ data: { name: sessionName } })
+      .then((s) => alive && setState(s))
+      .catch(() => alive && setState({ kind: "unknown", reason: "unavailable" }));
+    return () => {
+      alive = false;
+    };
+  }, [sessionName]);
+
+  if (state === null) {
+    return (
+      <span className="workspace-notice">
+        <Spinner /> Checking workspace…
+      </span>
+    );
+  }
+  const summary = workspaceSummary(state);
+  return (
+    <span className={`workspace-notice${summary.dirty ? " warn-text" : ""}`}>{summary.text}</span>
+  );
 }
 
 export const Route = createFileRoute("/_app/sessions/$sessionName")({
@@ -74,13 +109,24 @@ function SessionDetailPage() {
   const confirmCopy: Partial<Record<SessionActionKind, ConfirmOptions>> = {
     reset: {
       title: `Reset "${session.name}"?`,
-      body: "This destroys the container and its workspace volume, then re-clones with a fresh session UUID.",
+      body: (
+        <>
+          This destroys the container and its workspace volume, then re-clones with a fresh session
+          UUID.
+          <WorkspaceLossNotice sessionName={session.name} />
+        </>
+      ),
       confirmLabel: "Reset",
       danger: true,
     },
     destroy: {
       title: `Destroy "${session.name}"?`,
-      body: "This removes the container and its workspace volume permanently.",
+      body: (
+        <>
+          This removes the container and its workspace volume permanently.
+          <WorkspaceLossNotice sessionName={session.name} />
+        </>
+      ),
       confirmLabel: "Destroy",
       danger: true,
     },

@@ -23,6 +23,8 @@ export {
   SESSION_LABELS,
   workspaceVolumeName,
 } from "./domain/session";
+export type { WorkspaceGitProbe, WorkspaceState } from "./domain/workspace-state";
+export { parseWorkspaceProbe, WORKSPACE_PROBE_SEPARATOR } from "./domain/workspace-state";
 
 // Ports
 export type { AccountRepository } from "./ports/account-repository";
@@ -47,6 +49,10 @@ export { type DestroySessionInput, makeDestroySession } from "./usecases/destroy
 export { makeListSessions } from "./usecases/list-sessions";
 export { type MarkAccountReadyInput, makeMarkAccountReady } from "./usecases/mark-account-ready";
 export { makePollLogins } from "./usecases/poll-logins";
+export {
+  makeReadWorkspaceState,
+  type ReadWorkspaceStateInput,
+} from "./usecases/read-workspace-state";
 export { makeRecoverLogins } from "./usecases/recover-logins";
 export { makeRegisterAccount, type RegisterAccountInput } from "./usecases/register-account";
 export { makeResetSession, type ResetSessionInput } from "./usecases/reset-session";

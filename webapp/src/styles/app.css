@@ -769,6 +769,15 @@ h1 a.path:hover {
   justify-content: flex-end;
   margin-top: 22px;
 }
+/* Uncommitted-work notice (I2): its own line under the confirm body, with the
+   busy spinner while the workspace git state is still being probed. */
+.confirm-body .workspace-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-weight: 500;
+}
 
 /* ---- toasts -------------------------------------------------------------- */
 .toast-stack {

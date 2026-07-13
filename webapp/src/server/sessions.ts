@@ -12,9 +12,11 @@ import {
   makeCreateSession,
   makeDestroySession,
   makeListSessions,
+  makeReadWorkspaceState,
   makeResetSession,
   makeStartSession,
   makeStopSession,
+  type WorkspaceState,
 } from "~/core";
 import type { SessionRow } from "~/ui/view-models/rows";
 import { accountRepository, containerEngine, permissionMode } from "./runtime";
@@ -55,6 +57,18 @@ export const createSession = createServerFn({ method: "POST" })
       permissionMode: permissionMode(),
     });
     return { name: session.name };
+  });
+
+/**
+ * Workspace git state for the Destroy/Reset confirm dialogs (I2). Read-only and
+ * auth-guarded like everything else; the core use case is label-guarded and
+ * never reports a fake "clean" for a stopped container or a failed probe.
+ */
+export const readWorkspaceState = createServerFn({ method: "GET" })
+  .validator((data: { name: string }) => data)
+  .handler(async ({ data }): Promise<WorkspaceState> => {
+    await guard();
+    return makeReadWorkspaceState({ engine: containerEngine() })({ name: data.name });
   });
 
 export const startSession = createServerFn({ method: "POST" })

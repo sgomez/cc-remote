@@ -13,8 +13,10 @@ import type {
   LoginContainerSpec,
   SessionContainer,
   SessionContainerSpec,
+  WorkspaceGitProbe,
 } from "../../core";
-import { configFromEnv, type DockerAdapterConfig } from "./config";
+import { WORKSPACE_PROBE_SEPARATOR } from "../../core";
+import { configFromEnv, type DockerAdapterConfig, WORKSPACE_MOUNT } from "./config";
 import {
   cloneContainerName,
   isLoginLabelled,
@@ -36,6 +38,31 @@ function isNotFound(err: unknown): boolean {
   return (
     typeof err === "object" && err !== null && (err as { statusCode?: number }).statusCode === 404
   );
+}
+
+/**
+ * The workspace git probe (I2). Runs as the unprivileged `node` user (via the
+ * exec `User`): `git status --porcelain`, a separator line, then the count of
+ * commits ahead of `@{upstream}` (which fails silently with no upstream, leaving
+ * an empty ahead-block). A non-git or missing `/workspace` exits non-zero, which
+ * the domain maps to "unknown". The separator is the domain's constant so the
+ * pure parser (`parseWorkspaceProbe`) and this command never drift.
+ */
+const WORKSPACE_PROBE_CMD = [
+  `git -C ${WORKSPACE_MOUNT} rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 3`,
+  `git -C ${WORKSPACE_MOUNT} status --porcelain`,
+  `printf '%s\\n' '${WORKSPACE_PROBE_SEPARATOR}'`,
+  `git -C ${WORKSPACE_MOUNT} rev-list --count @{upstream}..HEAD 2>/dev/null || true`,
+].join("\n");
+
+/** Drain a dockerode exec (TTY) stream to a single UTF-8 string. */
+function collectStream(stream: NodeJS.ReadableStream): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    stream.on("error", reject);
+  });
 }
 
 export class DockerContainerEngine implements ContainerEngine {
@@ -92,6 +119,21 @@ export class DockerContainerEngine implements ContainerEngine {
 
   async removeContainer(sessionName: string): Promise<void> {
     await this.guardedSession(sessionName).remove({ force: true });
+  }
+
+  async probeWorkspaceGit(sessionName: string): Promise<WorkspaceGitProbe> {
+    const container = this.docker.getContainer(mainContainerName(sessionName));
+    const exec = await container.exec({
+      Cmd: ["sh", "-c", WORKSPACE_PROBE_CMD],
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: true,
+      User: "node",
+    });
+    const stream = await exec.start({ Tty: true });
+    const output = await collectStream(stream as unknown as NodeJS.ReadableStream);
+    const info = await exec.inspect();
+    return { exitCode: info.ExitCode ?? 1, output };
   }
 
   async runLoginContainer(spec: LoginContainerSpec): Promise<void> {

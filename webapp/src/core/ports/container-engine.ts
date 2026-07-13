@@ -6,6 +6,7 @@
 
 import type { LoginContainer } from "../domain/login";
 import type { SessionContainer } from "../domain/session";
+import type { WorkspaceGitProbe } from "../domain/workspace-state";
 
 /** Spec for the clone-helper container (first phase of session creation). */
 export type CloneContainerSpec = {
@@ -59,6 +60,16 @@ export interface ContainerEngine {
   startContainer(sessionName: string): Promise<void>;
   stopContainer(sessionName: string): Promise<void>;
   removeContainer(sessionName: string): Promise<void>;
+
+  /**
+   * Probe the git state of `/workspace` inside the running session container
+   * (the uncommitted-work guard, I2). Execs `git status --porcelain` + an
+   * ahead-of-upstream count as the unprivileged `node` user and returns the raw
+   * capture; the domain (`parseWorkspaceProbe`) interprets it. Only ever called
+   * for a running main container — the use case handles the stopped case without
+   * touching this.
+   */
+  probeWorkspaceGit(sessionName: string): Promise<WorkspaceGitProbe>;
 
   /** Create and start the Login Container for an Account (#14). */
   runLoginContainer(spec: LoginContainerSpec): Promise<void>;
