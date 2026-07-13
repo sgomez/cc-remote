@@ -55,12 +55,41 @@ export class FakeContainerEngine implements ContainerEngine {
   }[] = [];
   /** Error the next `followSessionLogs` throws instead of opening a stream. */
   nextFollowError: Error | null = null;
+  /**
+   * Fires INSIDE `followSessionLogs`, before the handle is returned — models
+   * Docker delivering output (or an immediate end/error) while the stream is
+   * still being opened. That window is where a follow can leak.
+   */
+  followHook: ((sink: LogSink) => void) | null = null;
   /** Records specs the use cases passed, for assertions. */
   readonly runSessionSpecs: SessionContainerSpec[] = [];
   readonly runCloneSpecs: CloneContainerSpec[] = [];
   readonly runLoginSpecs: LoginContainerSpec[] = [];
 
   // --- test helpers -------------------------------------------------------
+
+  /**
+   * Wipe all state. For suites that must share ONE engine instance across tests
+   * (a module mock captures it at import time) and so cannot rebuild it per test.
+   */
+  reset(): void {
+    this.main.clear();
+    this.clones.clear();
+    this.volumes.clear();
+    this.seededFiles.clear();
+    this.credentialed.clear();
+    this.logins.clear();
+    this.nextCloneExit = 0;
+    this.nextSessionLogs = "";
+    this.nextFollowError = null;
+    this.followHook = null;
+    this.probedWorkspaces.length = 0;
+    this.logReads.length = 0;
+    this.logFollows.length = 0;
+    this.runSessionSpecs.length = 0;
+    this.runCloneSpecs.length = 0;
+    this.runLoginSpecs.length = 0;
+  }
 
   /** Simulate a running main session container already existing. */
   seedRunningSession(c: { name: string; repo: string; accountId: string }): void {
@@ -202,6 +231,7 @@ export class FakeContainerEngine implements ContainerEngine {
     if (this.nextFollowError) throw this.nextFollowError;
     const entry = { sessionName, tail: options.tail, sink, closed: false };
     this.logFollows.push(entry);
+    this.followHook?.(sink);
     return {
       close() {
         entry.closed = true;

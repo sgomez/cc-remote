@@ -76,9 +76,12 @@ export async function logStreamResponse(request: Request, sessionName: string): 
       };
 
       try {
-        const started = await follow(
+        // `onOpen` is delivered by the use case BEFORE any output, so the client
+        // always learns which container it is reading before the first chunk.
+        const opened = await follow(
           { name: sessionName },
           {
+            onOpen: (source) => enqueue(formatSseEvent("open", { source })),
             onChunk: (text) => enqueue(formatSseEvent("chunk", { text })),
             onError: (error) => {
               enqueue(formatSseEvent("error", { message: error.message }));
@@ -92,8 +95,10 @@ export async function logStreamResponse(request: Request, sessionName: string): 
             },
           },
         );
-        handle = started.follow;
-        enqueue(formatSseEvent("open", { source: started.source }));
+        // The use case releases its own engine stream on end/error/close, so a
+        // stop() that ran before this assignment has already been honoured.
+        handle = opened;
+        if (closed) opened.close();
 
         // The client may have vanished while Docker was opening the stream.
         if (request.signal.aborted) stop();

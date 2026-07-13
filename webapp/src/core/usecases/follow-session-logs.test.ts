@@ -7,7 +7,7 @@ import { makeFollowSessionLogs } from "./follow-session-logs";
 const ESC = "\u001b";
 
 function spySink() {
-  return { onChunk: vi.fn(), onError: vi.fn(), onEnd: vi.fn() };
+  return { onOpen: vi.fn(), onChunk: vi.fn(), onError: vi.fn(), onEnd: vi.fn() };
 }
 
 describe("follow-session-logs label guard", () => {
@@ -32,11 +32,11 @@ describe("follow-session-logs", () => {
     engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
     const sink = spySink();
 
-    const result = await follow({ name: "s" }, sink);
+    await follow({ name: "s" }, sink);
     engine.lastFollow.sink.onChunk("agent starting\n");
     engine.lastFollow.sink.onChunk("listening\n");
 
-    expect(result.source).toBe("session");
+    expect(sink.onOpen).toHaveBeenCalledWith("session");
     expect(sink.onChunk.mock.calls.flat()).toEqual(["agent starting\n", "listening\n"]);
     expect(engine.lastFollow.tail).toBe(DEFAULT_LOG_TAIL);
   });
@@ -46,17 +46,17 @@ describe("follow-session-logs", () => {
     engine.seedCloningSession({ name: "s", repo: "o/r", accountId: "a" });
     const sink = spySink();
 
-    const result = await follow({ name: "s" }, sink);
+    await follow({ name: "s" }, sink);
     engine.lastFollow.sink.onChunk("Cloning into '/workspace'...\n");
 
-    expect(result.source).toBe("clone");
+    expect(sink.onOpen).toHaveBeenCalledWith("clone");
     expect(sink.onChunk).toHaveBeenCalledWith("Cloning into '/workspace'...\n");
   });
 
   it("follows a container that is not running", async () => {
     engine.seedSession({ name: "s", repo: "o/r", accountId: "a", state: "exited", exitCode: 1 });
 
-    await expect(follow({ name: "s" }, spySink())).resolves.toMatchObject({ source: "session" });
+    await expect(follow({ name: "s" }, spySink())).resolves.toBeDefined();
   });
 
   // Stateful sanitizing: the escape straddles the chunk boundary, which a
@@ -120,19 +120,19 @@ describe("follow-session-logs", () => {
   describe("close()", () => {
     it("tears down the engine stream", async () => {
       engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
-      const result = await follow({ name: "s" }, spySink());
+      const handle = await follow({ name: "s" }, spySink());
 
       expect(engine.lastFollow.closed).toBe(false);
-      result.follow.close();
+      handle.close();
       expect(engine.lastFollow.closed).toBe(true);
     });
 
     it("silences output that arrives after close", async () => {
       engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
       const sink = spySink();
-      const result = await follow({ name: "s" }, sink);
+      const handle = await follow({ name: "s" }, sink);
 
-      result.follow.close();
+      handle.close();
       engine.lastFollow.sink.onChunk("late line\n");
       engine.lastFollow.sink.onEnd();
       engine.lastFollow.sink.onError(new Error("late boom"));
@@ -142,12 +142,53 @@ describe("follow-session-logs", () => {
       expect(sink.onError).not.toHaveBeenCalled();
     });
 
+    it("releases the engine follow when the stream ends on its own", async () => {
+      engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
+      await follow({ name: "s" }, spySink());
+
+      engine.lastFollow.sink.onEnd();
+
+      // Not just "stop writing to it" — Docker holds the follow open for the
+      // life of the container, so it must actually be released.
+      expect(engine.lastFollow.closed).toBe(true);
+    });
+
+    it("releases the engine follow when the stream errors", async () => {
+      engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
+      await follow({ name: "s" }, spySink());
+
+      engine.lastFollow.sink.onError(new Error("docker hung up"));
+
+      expect(engine.lastFollow.closed).toBe(true);
+    });
+
+    // The leak: Docker can end (or fail) the stream while it is still opening,
+    // i.e. before we hold its handle. Releasing "the handle we have" would be a
+    // no-op there, and the follow would stay attached for the container's life.
+    it("releases a follow that ended before its handle came back", async () => {
+      engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
+      engine.followHook = (sink) => sink.onEnd();
+
+      await follow({ name: "s" }, spySink());
+
+      expect(engine.lastFollow.closed).toBe(true);
+    });
+
+    it("releases a follow that errored before its handle came back", async () => {
+      engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
+      engine.followHook = (sink) => sink.onError(new Error("instant boom"));
+
+      await follow({ name: "s" }, spySink());
+
+      expect(engine.lastFollow.closed).toBe(true);
+    });
+
     it("is idempotent", async () => {
       engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "a" });
-      const result = await follow({ name: "s" }, spySink());
+      const handle = await follow({ name: "s" }, spySink());
 
-      result.follow.close();
-      result.follow.close();
+      handle.close();
+      handle.close();
 
       expect(engine.logFollows).toHaveLength(1);
     });

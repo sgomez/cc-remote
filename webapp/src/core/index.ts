@@ -58,8 +58,8 @@ export { type DeleteAccountInput, makeDeleteAccount } from "./usecases/delete-ac
 export { type DestroySessionInput, makeDestroySession } from "./usecases/destroy-session";
 export {
   type FollowSessionLogsInput,
-  type FollowSessionLogsResult,
   makeFollowSessionLogs,
+  type SessionLogSink,
 } from "./usecases/follow-session-logs";
 export { makeListSessions } from "./usecases/list-sessions";
 export { type MarkAccountReadyInput, makeMarkAccountReady } from "./usecases/mark-account-ready";
