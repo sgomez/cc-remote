@@ -1,8 +1,10 @@
 // Session detail (#16): a web terminal for EVERY session (WS proxy #15), a
 // Remote Control panel shown ONLY when the Account's Provider Type has
 // remoteControl (else an explicit "not available" note), a clone_failed error
-// panel with retry, and stop/start/reset/destroy actions — the destructive ones
-// (reset/destroy) behind a confirmation. Status tracks the #15 SSE stream live.
+// panel with retry, an `error` panel that says the container crashed (U2 —
+// honest status: distinct from a deliberate stop), and stop/start/reset/destroy
+// actions — the destructive ones (reset/destroy) behind a confirmation. Status
+// tracks the #15 SSE stream live.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -211,6 +213,16 @@ function SessionDetailPage() {
               {busy === "reset" ? "Retrying…" : "Retry clone"}
             </button>
           </div>
+        </div>
+      )}
+
+      {session.status === "error" && (
+        <div className="panel error">
+          <h2 className="error-text">Container crashed</h2>
+          <p className="subtle">
+            This session's container exited on its own — it wasn't stopped by you. Start it again
+            below, or reset it for a clean workspace and a fresh session id.
+          </p>
         </div>
       )}
 

@@ -16,20 +16,72 @@ export type SessionActions = {
   canRetry: boolean;
 };
 
+// Status -> actions. Destroy is always available (even mid-clone, where it
+// removes the clone helper) — no status is ever a dead end. The reasoning per
+// row, beyond the running/stopped pair the legacy UI already had:
+//
+//   - starting:      created but not up yet (Docker "created"). Too early for
+//                     stop/reset/start to mean anything sensible — just wait,
+//                     or abandon it via destroy.
+//   - restarting:    Docker's `unless-stopped` policy is cycling it, possibly
+//                     in a crash loop. canStop breaks the loop; canReset
+//                     recreates cleanly. No canStart — it's already trying.
+//   - paused:        `docker pause`, not a real stop — the process is frozen,
+//                     not exited. canStart resumes it, canStop ends it
+//                     properly; reset/destroy as usual.
+//   - error:         the container exited on its own (crash), the whole point
+//                     of U2's status split from `stopped`. It reads like
+//                     `stopped` capability-wise — canStart to try again,
+//                     canReset for a clean slate — but never canStop (nothing
+//                     is running).
+//   - cloning:       mid clone-helper provisioning, same as before: destroy
+//                     only.
+//   - clone_failed:  unchanged — canRetry (re-runs the two-phase clone)
+//                     instead of reset, plus destroy.
+//   - unknown:       an engine state this build doesn't recognise. Too risky
+//                     to assume canStart/canStop are meaningful, but reset
+//                     (destroy + recreate unconditionally) always is, so it's
+//                     offered — the status is never a dead end short of
+//                     destroy.
+const ACTIONS_BY_STATUS: Record<SessionStatus, SessionActions> = {
+  running: { canStart: false, canStop: true, canReset: true, canDestroy: true, canRetry: false },
+  starting: {
+    canStart: false,
+    canStop: false,
+    canReset: false,
+    canDestroy: true,
+    canRetry: false,
+  },
+  restarting: { canStart: false, canStop: true, canReset: true, canDestroy: true, canRetry: false },
+  paused: { canStart: true, canStop: true, canReset: true, canDestroy: true, canRetry: false },
+  stopped: { canStart: true, canStop: false, canReset: true, canDestroy: true, canRetry: false },
+  error: { canStart: true, canStop: false, canReset: true, canDestroy: true, canRetry: false },
+  cloning: {
+    canStart: false,
+    canStop: false,
+    canReset: false,
+    canDestroy: true,
+    canRetry: false,
+  },
+  clone_failed: {
+    canStart: false,
+    canStop: false,
+    canReset: false,
+    canDestroy: true,
+    canRetry: true,
+  },
+  unknown: { canStart: false, canStop: false, canReset: true, canDestroy: true, canRetry: false },
+};
+
 /**
- * Lifecycle actions available for a Session status. Destroy (tear down the
- * container + workspace volume) is always offered — even mid-clone, where it
- * removes the clone helper. A `cloning` session offers nothing else; a
- * `clone_failed` one adds retry; running/stopped get the stop|start / reset set.
+ * Lifecycle actions available for a Session status. See the table above
+ * `ACTIONS_BY_STATUS` for the reasoning behind each row. Falls back to the
+ * `unknown` row for a status this build doesn't recognise, for the same
+ * runtime-safety reason as {@link import("./badges").sessionStatusBadge} — the
+ * status arrives from an SSE stream, not a value TypeScript checked.
  */
 export function sessionActions(status: SessionStatus): SessionActions {
-  return {
-    canStart: status === "stopped",
-    canStop: status === "running",
-    canReset: status === "running" || status === "stopped",
-    canDestroy: true,
-    canRetry: status === "clone_failed",
-  };
+  return ACTIONS_BY_STATUS[status] ?? ACTIONS_BY_STATUS.unknown;
 }
 
 /** The lifecycle actions rendered in the session detail's action row. */

@@ -28,6 +28,46 @@ describe("sessionActions", () => {
     expect(a.canDestroy).toBe(true);
   });
 
+  it("starting: only destroy (created but not up yet)", () => {
+    expect(sessionActions("starting")).toEqual({
+      canStart: false,
+      canStop: false,
+      canReset: false,
+      canDestroy: true,
+      canRetry: false,
+    });
+  });
+
+  it("restarting: stop (breaks the loop), reset, destroy — no start", () => {
+    expect(sessionActions("restarting")).toEqual({
+      canStart: false,
+      canStop: true,
+      canReset: true,
+      canDestroy: true,
+      canRetry: false,
+    });
+  });
+
+  it("paused: start (resume), stop, reset, destroy", () => {
+    expect(sessionActions("paused")).toEqual({
+      canStart: true,
+      canStop: true,
+      canReset: true,
+      canDestroy: true,
+      canRetry: false,
+    });
+  });
+
+  it("error: start and reset — a crashed session is never a dead end", () => {
+    expect(sessionActions("error")).toEqual({
+      canStart: true,
+      canStop: false,
+      canReset: true,
+      canDestroy: true,
+      canRetry: false,
+    });
+  });
+
   it("cloning: only destroy (mid-provision)", () => {
     expect(sessionActions("cloning")).toEqual({
       canStart: false,
@@ -43,6 +83,21 @@ describe("sessionActions", () => {
     expect(a.canRetry).toBe(true);
     expect(a.canReset).toBe(false);
     expect(a.canDestroy).toBe(true);
+  });
+
+  it("unknown: conservative but never a dead end (reset + destroy only)", () => {
+    expect(sessionActions("unknown")).toEqual({
+      canStart: false,
+      canStop: false,
+      canReset: true,
+      canDestroy: true,
+      canRetry: false,
+    });
+  });
+
+  it("falls back to the unknown row for a status this build doesn't recognise", () => {
+    const a = sessionActions("some-future-status" as Parameters<typeof sessionActions>[0]);
+    expect(a).toEqual(sessionActions("unknown"));
   });
 });
 
