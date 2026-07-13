@@ -6,20 +6,21 @@
 //    Config Volumes so a completed `claude /login` flips its Account to `ready`
 //    and its Login Container is destroyed. Nothing else drives that flip — the
 //    accounts SSE stream only reports what the poller has already written.
-//  - Graceful shutdown: SIGTERM/SIGINT stops running Session containers.
+//
+// Deliberately NO session shutdown on SIGTERM: Sessions are independent sibling
+// containers with their own `unless-stopped` policy, and web-manager restarts
+// (every redeploy sends it SIGTERM) must not kill agents mid-task. The legacy
+// stop-all-on-SIGTERM did exactly that — and `docker stop` marks a container
+// manually stopped, so the sessions never came back on their own. Trade-off:
+// `docker compose down` now can't remove the network while sessions run
+// (harmless error); stop them from the UI first for a full teardown.
 
 import { definePlugin } from "nitro";
-import { registerGracefulShutdown, startLoginPoller } from "~/adapters/docker";
+import { startLoginPoller } from "~/adapters/docker";
 import { accountRepository, containerEngine } from "~/server/runtime";
 
 export default definePlugin((nitro) => {
   const engine = containerEngine();
-
-  const detachShutdown = registerGracefulShutdown(engine, {
-    onStopped: (names) => {
-      if (names.length > 0) console.log(`[shutdown] stopped sessions: ${names.join(", ")}`);
-    },
-  });
 
   let stopPoller: (() => void) | undefined;
 
@@ -37,6 +38,5 @@ export default definePlugin((nitro) => {
 
   nitro.hooks.hook("close", () => {
     stopPoller?.();
-    detachShutdown();
   });
 });

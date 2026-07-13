@@ -119,8 +119,8 @@ describe("buildSessionCreateOptions — config-volume account", () => {
     expect(opts.HostConfig?.NetworkMode).toBe("cc-remote_default");
   });
 
-  it("passes the domain labels through unchanged", () => {
-    expect(opts.Labels).toEqual(sessionSpec.labels);
+  it("passes the domain labels through", () => {
+    expect(opts.Labels).toMatchObject(sessionSpec.labels);
   });
 
   it("applies a memory limit only when configured", () => {
@@ -204,5 +204,41 @@ describe("buildHasCredentialsCreateOptions", () => {
     const script = (opts.Cmd ?? [])[2] ?? "";
     expect(script).toContain(`test -f "/vol/${CREDENTIALS_MARKER}"`);
     expect(opts.HostConfig?.Binds).toEqual(["cc-remote-account-acc-1:/vol:ro"]);
+  });
+});
+
+describe("compose ownership neutralization", () => {
+  // The agent image is built by `docker compose build`, which bakes
+  // com.docker.compose.project/service labels into the image. Containers
+  // inherit image labels, so without an override compose treats every sibling
+  // container as a replica of the claude-agent service (replicas: 0) and a
+  // `docker compose up/down --remove-orphans` would stop or delete live
+  // Sessions. Inherited labels can't be removed, only overridden — every
+  // builder must blank them out.
+  const cloneSpec: CloneContainerSpec = {
+    sessionName: "demo",
+    repo: "octocat/hello",
+    accountId: "acc-1",
+    workspaceVolume: "cc-remote-workspace-demo",
+    env: {},
+    labels: { "cc-remote-session": "true", "cc-remote-cloning": "true" },
+  };
+  const builders = [
+    ["session", buildSessionCreateOptions(sessionSpec, config)],
+    ["clone", buildCloneCreateOptions(cloneSpec, config)],
+    ["login", buildLoginCreateOptions(loginSpec, config)],
+    ["seed", buildSeedCreateOptions("vol", ".claude.json", "{}", config)],
+    ["has-credentials", buildHasCredentialsCreateOptions("vol", config)],
+  ] as const;
+
+  it.each(builders)("%s container blanks the inherited compose project labels", (_, opts) => {
+    expect(opts.Labels?.["com.docker.compose.project"]).toBe("");
+    expect(opts.Labels?.["com.docker.compose.service"]).toBe("");
+    expect(opts.Labels?.["com.docker.compose.version"]).toBe("");
+  });
+
+  it("keeps the domain labels alongside the overrides", () => {
+    const session = buildSessionCreateOptions(sessionSpec, config);
+    expect(session.Labels).toMatchObject(sessionSpec.labels);
   });
 });

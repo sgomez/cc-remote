@@ -17,7 +17,7 @@ The `webapp/` has a full test/lint/type gate (`pnpm test`/`lint`/`check`) run in
 ./setup.sh                          # interactive config wizard -> config.json + .env
 docker compose up -d --build        # build and start web-manager (+ caddy, + docker-socket-proxy)
 docker compose logs -f              # tail logs
-docker compose down                 # stop the stack
+docker compose down                 # stop the stack (running Sessions survive it — stop them from the UI first for a full teardown)
 docker compose build --no-cache     # rebuild images from scratch
 
 # web-manager, iterating outside Docker (pnpm workspace; run from the repo root):

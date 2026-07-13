@@ -52,6 +52,24 @@ function mergeEnv(base: Record<string, string>, override: Record<string, string>
   return toEnvArray({ ...base, ...override });
 }
 
+/**
+ * The agent image is built by `docker compose build`, which bakes
+ * com.docker.compose.project/service labels into it — and containers inherit
+ * image labels. Left alone, compose then treats every sibling container as a
+ * replica of the claude-agent service (`deploy.replicas: 0`), so a
+ * `docker compose up`/`down --remove-orphans` would stop or delete live
+ * Sessions. Inherited labels can't be removed at create time, only overridden:
+ * blank them so compose never claims ownership of what the adapter creates.
+ */
+function disownCompose(labels: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...labels,
+    "com.docker.compose.project": "",
+    "com.docker.compose.service": "",
+    "com.docker.compose.version": "",
+  };
+}
+
 /** Shared hardening flags carried over from the legacy Express web-manager. */
 function baseHostConfig(config: DockerAdapterConfig, binds: string[]): Docker.HostConfig {
   const hostConfig: Docker.HostConfig = {
@@ -88,7 +106,7 @@ export function buildSessionCreateOptions(
     Tty: true,
     OpenStdin: true,
     Env: mergeEnv(infra, spec.env),
-    Labels: spec.labels,
+    Labels: disownCompose(spec.labels),
     HostConfig: baseHostConfig(config, binds),
   };
 }
@@ -121,7 +139,7 @@ export function buildLoginCreateOptions(
     OpenStdin: true,
     Cmd: ["sh", "-c", ttyd],
     Env: toEnvArray(env),
-    Labels: spec.labels,
+    Labels: disownCompose(spec.labels),
     HostConfig: {
       Binds: [`${spec.accountConfigVolume}:${ACCOUNT_CONFIG_MOUNT}`],
       SecurityOpt: ["no-new-privileges:true"],
@@ -146,7 +164,7 @@ export function buildCloneCreateOptions(
     Entrypoint: [],
     Cmd: ["sh", "-c", CLONE_CMD],
     Env: mergeEnv(infraEnv(config), spec.env),
-    Labels: spec.labels,
+    Labels: disownCompose(spec.labels),
     HostConfig: {
       Binds: [`${spec.workspaceVolume}:${WORKSPACE_MOUNT}`],
       SecurityOpt: ["no-new-privileges:true"],
@@ -188,6 +206,7 @@ export function buildSeedCreateOptions(
       PUID: config.puid,
       PGID: config.pgid,
     }),
+    Labels: disownCompose(),
     HostConfig: {
       Binds: [`${volumeName}:${HELPER_VOLUME_MOUNT}`],
       SecurityOpt: ["no-new-privileges:true"],
@@ -207,6 +226,7 @@ export function buildHasCredentialsCreateOptions(
     Image: config.agentImage,
     Entrypoint: [],
     Cmd: ["sh", "-c", `test -f "${HELPER_VOLUME_MOUNT}/${CREDENTIALS_MARKER}"`],
+    Labels: disownCompose(),
     HostConfig: {
       Binds: [`${volumeName}:${HELPER_VOLUME_MOUNT}:ro`],
       SecurityOpt: ["no-new-privileges:true"],
