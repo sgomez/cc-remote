@@ -13,6 +13,7 @@ import {
   makeDeleteAccount,
   makeRegisterAccount,
   makeStartLogin,
+  toSessionStatus,
 } from "~/core";
 import type { AccountDetail, AccountRow, SessionRow } from "~/ui/view-models/rows";
 import { accountRepository, containerEngine, permissionMode } from "./runtime";
@@ -68,7 +69,9 @@ export const getAccount = createServerFn({ method: "GET" })
         name: c.name,
         repo: c.repo,
         accountId: c.accountId,
-        status: c.state === "running" ? "running" : "stopped",
+        // One derivation for every surface — a Session must not read "stopped"
+        // here while the sessions list calls the same container "error".
+        status: toSessionStatus(c),
       });
     }
 
