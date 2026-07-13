@@ -1,0 +1,69 @@
+# Security & sandboxing
+
+This deployment runs Claude Code in **Auto Mode** (`--permission-mode auto`): untrusted, AI-generated code executes without interactive approval prompts. This page explains the isolation that makes that acceptable and, just as importantly, [what it does *not* protect you from](#what-this-does-not-protect-you-from).
+
+## Why Auto Mode?
+
+Auto Mode replaces routine permission prompts with a background safety classifier that approves safe operations (reading/editing workspace files, standard git operations) and blocks actions that look destructive, irreversible, or outside the scope of the request. There is no TTY approval loop available remotely, and answering prompts from a phone defeats the point of Remote Control. So the deployment leans on container isolation instead of prompts.
+
+## The sandbox: no host paths, ever
+
+Every agent container mounts exactly two things: the Session's own workspace volume and its Account's config volume. **No host path is ever bind-mounted.** Filesystem changes, commands and tool executions cannot reach the VPS's files or configuration. Containers also run with `no-new-privileges`.
+
+## Network isolation (two networks, one trust boundary)
+
+Filesystem isolation is not enough on its own: an agent that could reach the `docker-socket-proxy` would escape the sandbox entirely. The proxy exposes `POST /containers/create` and does not inspect request bodies, so a single `curl` could create a container with `Binds: ["/:/host"]` (root on the host) and `GET /containers/*/json` would hand over every other container's environment, including your `GITHUB_TOKEN` and `ANTHROPIC_*` keys. A malicious npm dependency or a prompt injection in something the agent reads is enough to try it.
+
+The deployment therefore runs **two** Docker networks:
+
+| Network | Members |
+|---|---|
+| `cc-remote-control` | `docker-socket-proxy`, `web-manager`, `caddy` |
+| `cc-remote-agents` | `web-manager`, every agent container (Sessions, clone helpers, Login Containers, seed helpers) |
+
+`web-manager` is multi-homed and is the **only** bridge between the two: it drives the Docker API over the control network and dials each Session's web terminal over the agents network. From an agent container the proxy does not resolve by name, and a connection to its control-network IP is dropped by the bridge.
+
+## Resource limits (memory, CPU, PIDs)
+
+Isolation stops an agent from reaching *out*. It does nothing about an agent eating the box it sits on: an unbounded container that allocates until the kernel gives up takes down every other Session **and the web manager itself**, the thing you'd open on your phone to stop it. Every container the manager creates therefore carries:
+
+| Limit | Env var | What it stops |
+|---|---|---|
+| `Memory` + `MemorySwap` | `AGENT_MEMORY_LIMIT` | one runaway agent OOM-ing the host |
+| `NanoCpus` | `AGENT_CPU_LIMIT` | a runaway build starving the manager of CPU |
+| `PidsLimit` | `AGENT_PIDS_LIMIT` | fork bombs |
+
+`MemorySwap` is pinned **equal** to `Memory`: Docker's way of saying "no swap". Left unset, Docker allows swap up to 2× the limit, so a 2 GiB container could still touch 4 GiB and thrash the host's disk: the cap would look real without being one. (If your kernel has swap accounting disabled, Docker prints a warning at container start; the memory cap still applies.)
+
+**Where the value comes from.** `./setup.sh` reads the host's real RAM and core count and derives the caps:
+
+```
+memory = (total RAM − 1 GiB reserved for the host and the stack) / 2, clamped to [512m, 8g]
+cpus   = half the host's cores, minimum 1
+```
+
+The encoded assumption, so you can disagree with it: **about two Sessions are memory-hot at once**. A 2 GiB VPS lands on the 512 MiB floor, which is about the least Claude Code is usable in. Override via `config.json` (see the [user guide](usage.md#resource-limits)).
+
+A Session the kernel OOM-kills is reported honestly: a red **crashed** badge in the UI, not a mysterious stop.
+
+## What this does not protect you from
+
+The isolation above is real, and it is also **finite**. These are its known limits: deliberate decisions for a **single-user deployment**, not oversights. Read them before you trust this with anything.
+
+### 1. Sessions can reach each other
+
+Every Session exposes an unauthenticated, writable `ttyd` shell on port `7681`, and all Sessions share the `cc-remote-agents` network, so one Session can open a root-equivalent shell in another. Fine when every Session is yours (the premise of a single-user deployment); **not safe for multi-tenant use**. Do not hand Sessions to people you would not hand a shell to.
+
+> The obvious fix does not work: `enable_icc=false` on the agents bridge was tested and rejected: Docker then drops **all** container-to-container traffic on that bridge, with no way to exempt one container, which kills the web terminal itself. Closing this properly needs a network per Session or `DOCKER-USER` iptables rules; neither is implemented.
+
+### 2. A Session's `GITHUB_TOKEN` is your full OAuth token
+
+It is not scoped to the repository the Session cloned; it is the repo-scoped token from *your* GitHub login, so an agent holding it can read and push to **every repository you can reach**, personal and organizational. **Running a repo in a Session grants that repo's code access to all of your other repos.** You are trusting the code the agent runs, and anything it pulls in (a dependency, a prompt injection in a file it reads), with your GitHub account's reach. If that is too much, do not point a Session at a repository you do not trust.
+
+### 3. The resource cap is a blast-radius limit, not a fleet total
+
+It bounds *one* container. Nothing stops you from starting ten Sessions, and enough concurrent heavy ones can still overcommit the host. If "~2 memory-hot Sessions at once" is not how you work, override the limits in `config.json` rather than discovering it under load.
+
+## Sibling containers, not Docker-in-Docker
+
+For completeness, the architecture the above protects: the web manager never mounts the raw Docker socket and never runs Docker-in-Docker. It talks to the host daemon through a read-only, route-filtered `docker-socket-proxy` over TCP, and therefore runs unprivileged. Sessions are **sibling** containers created through that proxy, joined only to the agents network.

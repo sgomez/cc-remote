@@ -150,7 +150,7 @@ services:
 # resolves, connects hang/reset), which would kill web-manager -> ttyd as well, and
 # there is no way to exempt one container on that bridge. It would break the web
 # terminal without adding anything the split does not already give. Agent<->agent
-# traffic on the agents net therefore remains possible (see README, S2).
+# traffic on the agents net therefore remains possible (see docs/security.md, S1).
 networks:
   cc-remote-control:
     name: cc-remote-control
