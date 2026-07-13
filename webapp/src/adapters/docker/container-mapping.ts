@@ -164,3 +164,51 @@ export function ttydWebSocketUrl(sessionName: string): string {
 export function loginTtydWebSocketUrl(accountId: string): string {
   return `ws://${loginContainerName(accountId)}:${TTYD_PORT}${loginTerminalBasePath(accountId)}/ws`;
 }
+
+/**
+ * Decode the body of `GET /containers/{id}/logs` to text.
+ *
+ * Docker returns TWO different wire formats and only the container's `Tty` flag
+ * says which: a container created WITHOUT a TTY gets a *multiplexed* stream —
+ * each chunk prefixed by an 8-byte header (stream type, 3 zero bytes, then a
+ * big-endian uint32 length) — while a TTY container gets the raw bytes. Ours are
+ * created with `Tty: true` (see container-specs.ts), so in practice this is the
+ * raw path; we sniff the framing anyway because the cost is a few bytes of
+ * checking and the failure mode of guessing wrong is header bytes rendered as
+ * binary junk in the user's log panel.
+ *
+ * Sniffing is safe: a valid header starts with a stream type of 0/1/2 followed
+ * by three NUL bytes, which UTF-8 log text does not begin with, and we only
+ * accept the framed reading if every frame walks cleanly to the end of the
+ * buffer. Anything else is returned verbatim.
+ */
+export function decodeDockerLogs(buffer: Buffer): string {
+  return demultiplexDockerLogs(buffer) ?? buffer.toString("utf8");
+}
+
+const LOG_HEADER_SIZE = 8;
+const MAX_LOG_STREAM_TYPE = 2; // 0 stdin, 1 stdout, 2 stderr
+
+/** The framed reading of `buffer`, or null if it isn't cleanly framed. */
+function demultiplexDockerLogs(buffer: Buffer): string | null {
+  const frames: Buffer[] = [];
+  let offset = 0;
+
+  while (offset < buffer.length) {
+    if (offset + LOG_HEADER_SIZE > buffer.length) return null;
+    if (buffer.readUInt8(offset) > MAX_LOG_STREAM_TYPE) return null;
+    // Bytes 1-3 of a real header are always zero padding.
+    if (buffer.readUInt8(offset + 1) !== 0) return null;
+    if (buffer.readUInt8(offset + 2) !== 0) return null;
+    if (buffer.readUInt8(offset + 3) !== 0) return null;
+
+    const size = buffer.readUInt32BE(offset + 4);
+    const start = offset + LOG_HEADER_SIZE;
+    if (start + size > buffer.length) return null;
+
+    frames.push(buffer.subarray(start, start + size));
+    offset = start + size;
+  }
+
+  return frames.length > 0 ? Buffer.concat(frames).toString("utf8") : null;
+}

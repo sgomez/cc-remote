@@ -15,10 +15,11 @@ import type {
   SessionContainerSpec,
   WorkspaceGitProbe,
 } from "../../core";
-import { WORKSPACE_PROBE_SEPARATOR } from "../../core";
+import { SessionNotFoundError, WORKSPACE_PROBE_SEPARATOR } from "../../core";
 import { configFromEnv, type DockerAdapterConfig, WORKSPACE_MOUNT } from "./config";
 import {
   cloneContainerName,
+  decodeDockerLogs,
   isLoginLabelled,
   isSessionLabelled,
   loginContainerName,
@@ -149,6 +150,28 @@ export class DockerContainerEngine implements ContainerEngine {
     const output = await collectStream(stream as unknown as NodeJS.ReadableStream);
     const info = await exec.inspect();
     return { exitCode: info.ExitCode ?? 1, output };
+  }
+
+  /**
+   * Tail a session's container output. Resolves the same main-else-clone target
+   * as `getSessionContainer`, under the same label guard (`inspectSession`), so
+   * this read can never reach an unlabelled host container. `follow: false`
+   * makes dockerode buffer the whole response, which works for an exited
+   * container — the case the feature exists for.
+   */
+  async readSessionLogs(sessionName: string, options: { tail: number }): Promise<string> {
+    const info = await this.inspectSession(sessionName);
+    if (!info) throw new SessionNotFoundError(sessionName);
+
+    const buffer = (await this.docker.getContainer(info.Id).logs({
+      stdout: true,
+      stderr: true,
+      tail: options.tail,
+      timestamps: false,
+      follow: false,
+    })) as unknown as Buffer;
+
+    return decodeDockerLogs(Buffer.from(buffer));
   }
 
   async runLoginContainer(spec: LoginContainerSpec): Promise<void> {

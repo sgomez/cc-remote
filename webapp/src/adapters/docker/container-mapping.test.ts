@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { LOGIN_LABELS, SESSION_LABELS } from "../../core";
 import {
   cloneContainerName,
+  decodeDockerLogs,
   isLoginLabelled,
   isSessionLabelled,
   loginContainerName,
@@ -168,5 +169,71 @@ describe("ttydWebSocketUrl", () => {
     expect(ttydWebSocketUrl("demo")).toBe(
       `ws://${mainContainerName("demo")}:7681${ttydBasePath("demo")}/ws`,
     );
+  });
+});
+
+/** Build one Docker multiplexed log frame (the non-TTY wire format). */
+function frame(type: number, text: string): Buffer {
+  const payload = Buffer.from(text, "utf8");
+  const header = Buffer.alloc(8);
+  header.writeUInt8(type, 0);
+  header.writeUInt32BE(payload.length, 4);
+  return Buffer.concat([header, payload]);
+}
+
+describe("decodeDockerLogs", () => {
+  // Our containers are created with `Tty: true`, so this is the format we
+  // actually receive: raw bytes, no framing to strip.
+  it("returns a raw TTY stream verbatim", () => {
+    expect(decodeDockerLogs(Buffer.from("hello agent\r\n", "utf8"))).toBe("hello agent\r\n");
+  });
+
+  it("keeps ANSI escapes in a raw TTY stream intact", () => {
+    const ansi = "\u001b[32mready\u001b[0m\r\n";
+    expect(decodeDockerLogs(Buffer.from(ansi, "utf8"))).toBe(ansi);
+  });
+
+  // Robustness: a non-TTY container (or a future spec change) would frame its
+  // output, and the headers must be stripped rather than rendered as junk.
+  it("de-multiplexes a framed stream, concatenating stdout and stderr in order", () => {
+    const buffer = Buffer.concat([
+      frame(1, "cloning…\n"),
+      frame(2, "fatal: repository not found\n"),
+      frame(1, "done\n"),
+    ]);
+
+    expect(decodeDockerLogs(buffer)).toBe("cloning…\nfatal: repository not found\ndone\n");
+  });
+
+  it("strips the 8-byte header rather than leaking framing bytes into the text", () => {
+    const decoded = decodeDockerLogs(frame(1, "plain line\n"));
+
+    expect(decoded).toBe("plain line\n");
+    expect(decoded).not.toContain("\u0000");
+  });
+
+  it("handles multi-byte UTF-8 split across the payload of a frame", () => {
+    expect(decodeDockerLogs(frame(1, "café ✓\n"))).toBe("café ✓\n");
+  });
+
+  it("returns empty text for an empty buffer", () => {
+    expect(decodeDockerLogs(Buffer.alloc(0))).toBe("");
+  });
+
+  // A truncated/implausible header means "this isn't framed" — fall back to raw
+  // rather than dropping the user's logs on the floor.
+  it("falls back to raw text when the framing does not walk cleanly to the end", () => {
+    const truncated = Buffer.concat([frame(1, "ok\n"), Buffer.from([1, 0, 0, 0, 0, 0, 0])]);
+
+    expect(decodeDockerLogs(truncated)).toContain("ok\n");
+  });
+
+  it("treats a frame whose declared length overruns the buffer as raw text", () => {
+    const header = Buffer.alloc(8);
+    header.writeUInt8(1, 0);
+    header.writeUInt32BE(999, 4);
+    const overrun = Buffer.concat([header, Buffer.from("short", "utf8")]);
+
+    expect(decodeDockerLogs(overrun)).toContain("short");
   });
 });
