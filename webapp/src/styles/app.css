@@ -509,6 +509,44 @@ h1 a.path:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
 }
+/* starting/restarting: transient, on the way to `running` — same blue family
+   as `cloning` for "provisioning", pulsing (see .animated above). */
+.status-badge.starting {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+/* restarting is a warning-flavoured transient (Docker's `unless-stopped` is
+   cycling the container, possibly a crash loop) — amber, not blue. */
+.status-badge.restarting {
+  background: var(--amber-glow);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+/* paused: frozen, not exited — muted like `stopped` but a distinct slate hue
+   so the two aren't mistaken for each other at a glance. */
+.status-badge.paused {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+/* error: the container crashed on its own — the one status the user must act
+   on. Shares the red family with `clone_failed` but pushed further (stronger
+   fill/border + a glow) so it reads as more urgent, not just "also red". */
+.status-badge.error {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 3px var(--danger-glow);
+}
+/* unknown: an engine state we don't recognise — deliberately flat grey and
+   dashed so it reads as indeterminate rather than as any real status. */
+.status-badge.unknown {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--text-muted);
+  border-color: rgba(100, 116, 139, 0.35);
+  border-style: dashed;
+}
 
 /* A page header's action — the "+ New" button on a list, the status pill on a
    detail — sits beside the title in row 1 and keeps its label on one line. Placed
