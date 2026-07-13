@@ -201,16 +201,33 @@ code.inline {
 }
 
 /* ---- page header --------------------------------------------------------- */
+/* Two rows: the title shares row 1 with the action (button or status pill), and
+   the description gets row 2 to itself, full width.
+   It used to be a flex row of [title + description] | [action]. The description
+   lives inside the title's wrapper, so it drove that column's width: on a narrow
+   viewport it starved the action, wrapping the button's label onto two lines,
+   while the description still couldn't use the full width. Dissolving the
+   wrapper with `display: contents` lets both become grid items in their own
+   right, so the description can no longer compete with the action for space. */
 .page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 6px;
   margin-bottom: 28px;
 }
+.page-head > div {
+  display: contents;
+}
 .page-head h1 {
+  grid-column: 1;
+  grid-row: 1;
   font-size: 1.7rem;
 }
+/* The grid placement of the description and the action lives further down, each
+   after the base rule it refines (.subtle, .btn/.status-badge), so specificity
+   ascends in source order. */
 .page-head .path {
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -231,6 +248,13 @@ h1 a.path:hover {
 }
 .subtle.tight {
   margin: 6px 0 0;
+}
+/* In a page header the description owns row 2 outright, full width — it never
+   competes with the action for horizontal space (see .page-head). */
+.page-head .subtle {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: 0;
 }
 
 /* ---- buttons (legacy .btn family) ---------------------------------------- */
@@ -484,6 +508,17 @@ h1 a.path:hover {
 .status-badge.stopped {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
+}
+
+/* A page header's action — the "+ New" button on a list, the status pill on a
+   detail — sits beside the title in row 1 and keeps its label on one line. Placed
+   after .btn and .status-badge so specificity ascends in source order. */
+.page-head > .btn,
+.page-head > .status-badge {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  white-space: nowrap;
 }
 
 /* ---- forms --------------------------------------------------------------- */
@@ -966,6 +1001,14 @@ html:active-view-transition-type(backward)::view-transition-new(main-content) {
     transform: translateX(-100%);
     transition: transform 0.22s ease;
     border-right: 1px solid var(--card-border);
+    /* Opaque here, unlike the desktop column. The desktop sidebar's 35%-alpha
+       glass sits over the page background; the drawer floats over live content,
+       and at that alpha the text behind it shows straight through. Same base
+       colour, no alpha — and no backdrop blur left to compute behind it. */
+    background: #0f172a;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: var(--shadow-lg);
     /* Don't let the view transition snapshot the transformed drawer. */
     view-transition-name: none;
   }
