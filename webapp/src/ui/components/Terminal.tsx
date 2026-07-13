@@ -26,6 +26,21 @@ function wsUrl(path: string): string {
   return `${proto}//${window.location.host}${path}`;
 }
 
+/**
+ * Whether to put the keyboard in the terminal as soon as it connects.
+ *
+ * On a pointing device this is what you always want: the terminal is the reason
+ * the page exists, and having to click it first is friction on every visit.
+ *
+ * On touch it is the opposite — focusing xterm raises the on-screen keyboard,
+ * which would cover half the screen before the user has asked to type anything,
+ * and this app is meant to be driven from a phone. There, tapping the terminal
+ * still focuses it (xterm does that itself), which is the explicit request.
+ */
+function shouldAutoFocus(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
+}
+
 export function Terminal({ title, wsPath }: { title: string; wsPath: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting");
@@ -64,6 +79,9 @@ export function Terminal({ title, wsPath }: { title: string; wsPath: string }) {
       ws.onopen = () => {
         setStatus("open");
         ws.send(JSON.stringify({ AuthToken: "", columns: term.cols, rows: term.rows }));
+        // Focus once the socket is up, not on mount: keystrokes typed into a
+        // terminal whose socket is still connecting are dropped on the floor.
+        if (shouldAutoFocus()) term.focus();
       };
       ws.onmessage = (ev) => {
         const bytes = new Uint8Array(ev.data as ArrayBuffer);
