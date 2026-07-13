@@ -26,6 +26,7 @@ import {
   PendingFrameQueue,
   toUpstreamFrame,
 } from "~/server/terminal-proxy";
+import { expectedOrigin, isAllowedOrigin } from "~/server/ws-origin";
 
 type PeerContext = { sessionName: string };
 
@@ -46,8 +47,26 @@ function sessionNameFromUrl(url: string): string {
 export default defineWebSocketHandler({
   // Runs BEFORE the 101 handshake. Every rejection throws a real HTTP Response
   // (a clean status the browser can read, not a hung/aborted socket):
-  //   401 unauthenticated · 404 unknown or non-Session target.
+  //   403 bad/missing Origin · 401 unauthenticated · 404 unknown or non-Session target.
   async upgrade(request) {
+    // Origin check first, before any auth/session lookup: this endpoint is only
+    // ever dialed by the app's own browser UI (see ws-origin.ts), so a bad or
+    // missing Origin is rejected outright rather than spent on a session lookup.
+    // A misconfigured/unparseable BETTER_AUTH_URL fails closed (403), not 500 —
+    // `validate:env` should already have refused to start in that case.
+    let originOk: boolean;
+    try {
+      originOk = isAllowedOrigin(
+        request.headers.get("origin"),
+        expectedOrigin(process.env.BETTER_AUTH_URL ?? ""),
+      );
+    } catch {
+      originOk = false;
+    }
+    if (!originOk) {
+      throw new Response("Forbidden", { status: 403 });
+    }
+
     try {
       await requireSession(request.headers);
     } catch {

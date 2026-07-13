@@ -30,6 +30,28 @@ export const auth = betterAuth({
   // (see the Auth section in AGENTS.md / CLAUDE.md).
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
+  // S4 hardening: pin the single origin this deployment is ever reachable at
+  // (the same public URL `baseURL` already points to) rather than relying on
+  // better-auth's own baseURL-derived default, so the intent is explicit here.
+  trustedOrigins: process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : [],
+  // Explicit cookie posture instead of better-auth's implicit defaults (S4
+  // hardening). `sameSite`/`httpOnly` below match what better-auth already
+  // defaults to (see `createCookieGetter` in better-auth/dist/cookies/index.mjs)
+  // written out so they are a deliberate choice, not "whatever the library
+  // currently ships". `useSecureCookies` mirrors better-auth's own
+  // BETTER_AUTH_URL-scheme derivation explicitly instead of its multi-step
+  // fallback (dynamic baseURL protocol -> string baseURL scheme -> NODE_ENV):
+  // secure whenever the deployment's public URL is https (the normal case,
+  // Caddy always terminates TLS in front of web-manager), never secure over a
+  // plain-http BETTER_AUTH_URL (e.g. `pnpm dev` without Caddy in front), where
+  // a Secure cookie would silently never be sent back.
+  advanced: {
+    useSecureCookies: (process.env.BETTER_AUTH_URL ?? "").startsWith("https://"),
+    defaultCookieAttributes: {
+      sameSite: "lax",
+      httpOnly: true,
+    },
+  },
   user: {
     // `githubLogin` persisted from the verified GitHub profile; see
     // github-profile.ts for why it must stay inputtable.
