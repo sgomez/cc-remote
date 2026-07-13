@@ -11,6 +11,12 @@ A Dockerized deployment for running [Claude Code](https://github.com/anthropics/
 
 The `webapp/` has a full test/lint/type gate (`pnpm test`/`lint`/`check`) run in CI on every PR that touches it (`.github/workflows/ci.yml`); the framework-free `src/core/` is 100% test-driven. The Docker half (images, entrypoints, compose, Caddy) has no automated suite — validate those changes by running the stack (see below) and exercising the affected flow manually.
 
+### Testing policy — respect the pyramid
+
+Unit and integration tests against the **ports and fakes** (`webapp/test/fake-container-engine.ts`) are the normal gate: they are what `pnpm test` runs and what you iterate against. Tests that touch **real infrastructure** — the Docker daemon, better-auth/OAuth, a live WebSocket round-trip — are deliberately *not* in that gate. They live behind a flag (`RUN_DOCKER_IT=1 pnpm exec vitest run --config vitest.integration.config.ts`) and are meant to be run **once, before delivering** a change, not on every iteration.
+
+The recurring cost of infra/port tests is not acceptable, and neither is looping to make a flaky daemon-dependent test pass. Keep end-to-end coverage to the bare minimum that earns its keep, and gate any new infra-touching suite behind the flag from the start. If that suite's cost grows, the sanctioned move is to tag those tests off by default and switch them on all at once for extreme cases — not to keep paying for them on every run. Test the application/port boundary thoroughly, and document infra risk rather than chasing coverage of it.
+
 ## Commands
 
 ```bash
