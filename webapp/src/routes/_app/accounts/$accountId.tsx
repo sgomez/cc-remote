@@ -86,7 +86,7 @@ function AccountDetailPage() {
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head" style={{ viewTransitionName: `acct-card-${account.id}` }}>
         <div>
           <h1 style={{ viewTransitionName: `acct-title-${account.id}` }}>
             <span className="path">~/accounts/</span>

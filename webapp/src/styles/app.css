@@ -56,6 +56,12 @@ body {
   min-height: 100vh;
 }
 
+html {
+  /* Reserve the scrollbar gutter so the content pane doesn't shift width
+     mid view-transition when a page toggles overflow. */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: var(--font-family);
   background-color: var(--bg-color);
@@ -182,6 +188,9 @@ code.inline {
   min-width: 0;
   padding: 40px clamp(20px, 5vw, 56px);
   max-width: 1100px;
+  /* Scope page transitions to the content pane (the sidebar keeps its own
+     name and never animates). */
+  view-transition-name: main-content;
 }
 
 /* Mobile top bar + drawer scrim — hidden on desktop, activated in the
@@ -811,11 +820,80 @@ code.inline {
 
 /* ---- view transitions ---------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
+  ::view-transition-old(main-content),
+  ::view-transition-new(main-content) {
     animation-duration: 0.25s;
   }
 }
+
+/* Honour reduced motion: kill every view-transition animation outright. The
+   router also returns `false` from its types function under reduced motion, but
+   this covers status-badge transitions and any UA-driven fallback. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* view-transition-class hooks: shared tuning for whole families of morphing
+   elements without naming each one. */
+.card,
+.page-head {
+  view-transition-class: vt-surface;
+}
+.status-badge {
+  view-transition-class: vt-pill;
+}
+::view-transition-group(*.vt-surface) {
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+::view-transition-group(*.vt-pill) {
+  animation-duration: 0.2s;
+}
+
+/* Directional stack transitions (typed via the router). Small slide + fade on
+   the content pane only — not a full-viewport swipe. */
+@keyframes vt-out-left {
+  to {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+}
+@keyframes vt-in-right {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+@keyframes vt-out-right {
+  to {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+@keyframes vt-in-left {
+  from {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+}
+html:active-view-transition-type(forward)::view-transition-old(main-content) {
+  animation: vt-out-left 0.25s ease both;
+}
+html:active-view-transition-type(forward)::view-transition-new(main-content) {
+  animation: vt-in-right 0.25s ease both;
+}
+html:active-view-transition-type(backward)::view-transition-old(main-content) {
+  animation: vt-out-right 0.25s ease both;
+}
+html:active-view-transition-type(backward)::view-transition-new(main-content) {
+  animation: vt-in-left 0.25s ease both;
+}
+/* "morph" type: no extra rules — named element morphs carry it */
 
 /* ---- responsive: sidebar becomes a burger-triggered drawer --------------- */
 @media (max-width: 720px) {

@@ -109,7 +109,7 @@ function SessionDetailPage() {
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head" style={{ viewTransitionName: `sess-card-${session.name}` }}>
         <div>
           <h1 style={{ viewTransitionName: `sess-title-${session.name}` }}>
             <span className="path">~/sessions/</span>
