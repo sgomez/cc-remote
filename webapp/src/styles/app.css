@@ -846,6 +846,8 @@ h1 a.path:hover {
   ::view-transition-image-pair(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {
+    /* biome-ignore lint/complexity/noImportantStyles: the kill-switch must beat
+       the higher-specificity typed-transition rules below. */
     animation: none !important;
   }
 }

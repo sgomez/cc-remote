@@ -42,17 +42,20 @@ describe("commitWithTransition", () => {
     }
   });
 
-  function stubEnv(opts: { reduceMotion: boolean }): { startViewTransition: ReturnType<typeof vi.fn> } {
+  function stubEnv(opts: { reduceMotion: boolean }): {
+    startViewTransition: ReturnType<typeof vi.fn>;
+  } {
     const startViewTransition = vi.fn((cb: () => void) => {
       cb();
       return { finished: Promise.resolve() };
     });
     // @ts-expect-error minimal document stub for the transition path
     globalThis.document = { startViewTransition };
-    // @ts-expect-error minimal window stub for the reduced-motion query
+    // Minimal window stub for the reduced-motion query.
     globalThis.window = {
-      matchMedia: (query: string) => ({ matches: opts.reduceMotion && query.includes("reduce") }),
-    };
+      matchMedia: (query: string) =>
+        ({ matches: opts.reduceMotion && query.includes("reduce") }) as MediaQueryList,
+    } as unknown as Window & typeof globalThis;
     return { startViewTransition };
   }
 
