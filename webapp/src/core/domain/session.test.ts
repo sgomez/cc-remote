@@ -4,9 +4,11 @@ import {
   assertValidRepo,
   assertValidSessionName,
   buildSessionLabels,
+  type ContainerState,
   isValidRepo,
   isValidSessionName,
   SESSION_LABELS,
+  type SessionContainer,
   toSessionStatus,
   workspaceVolumeName,
 } from "./session";
@@ -67,27 +69,90 @@ describe("session naming and labels", () => {
 });
 
 describe("toSessionStatus", () => {
-  it("maps a running main container to running", () => {
-    expect(
-      toSessionStatus({ name: "s", repo: "o/r", accountId: "a", state: "running", cloning: false }),
-    ).toBe("running");
+  const agent = (state: ContainerState, exitCode?: number | null): SessionContainer => ({
+    name: "s",
+    repo: "o/r",
+    accountId: "a",
+    state,
+    exitCode,
+    cloning: false,
+  });
+  const clone = (state: ContainerState, exitCode?: number | null): SessionContainer => ({
+    ...agent(state, exitCode),
+    cloning: true,
   });
 
-  it("maps a non-running main container to stopped", () => {
-    expect(
-      toSessionStatus({ name: "s", repo: "o/r", accountId: "a", state: "exited", cloning: false }),
-    ).toBe("stopped");
+  describe("main agent container", () => {
+    it.each([
+      ["running", "running"],
+      ["created", "starting"],
+      ["restarting", "restarting"],
+      ["paused", "paused"],
+      // Teardown in progress is not a failure — it is a stop that hasn't landed.
+      ["removing", "stopped"],
+      // Docker could not kill it: the container is broken, not stopped.
+      ["dead", "error"],
+      ["unknown", "unknown"],
+    ] as const)("maps %s to %s", (state, expected) => {
+      expect(toSessionStatus(agent(state))).toBe(expected);
+    });
+
+    it("maps a clean exit (0) to stopped", () => {
+      expect(toSessionStatus(agent("exited", 0))).toBe("stopped");
+    });
+
+    it.each([
+      // `docker stop` on a PID1 that ignores SIGTERM: SIGKILL after the timeout.
+      [137, "SIGKILL after docker stop's timeout"],
+      // A PID1 that exits on SIGTERM.
+      [143, "graceful SIGTERM exit"],
+    ] as const)("maps a signalled exit (%i) to stopped — %s", (code, _why) => {
+      expect(toSessionStatus(agent("exited", code))).toBe("stopped");
+    });
+
+    it.each([1, 3, 127])("maps a crash exit (%i) to error", (code) => {
+      expect(toSessionStatus(agent("exited", code))).toBe("error");
+    });
+
+    it.each([
+      ["null", null],
+      ["absent", undefined],
+    ] as const)("maps an exit with a(n) %s exit code to stopped, never error", (_label, code) => {
+      expect(toSessionStatus(agent("exited", code))).toBe("stopped");
+    });
   });
 
-  it("synthesizes cloning from a running clone helper", () => {
-    expect(
-      toSessionStatus({ name: "s", repo: "o/r", accountId: "a", state: "running", cloning: true }),
-    ).toBe("cloning");
-  });
+  describe("clone helper", () => {
+    it.each([
+      "created",
+      "running",
+      "restarting",
+      "paused",
+      // The helper is briefly `removing` on the happy path, between the SSE
+      // ticks that drive the list — reporting clone_failed here is the false
+      // red flash this mapping exists to kill.
+      "removing",
+      "unknown",
+    ] as const)("keeps a %s helper on cloning", (state) => {
+      expect(toSessionStatus(clone(state))).toBe("cloning");
+    });
 
-  it("synthesizes clone_failed from an exited clone helper", () => {
-    expect(
-      toSessionStatus({ name: "s", repo: "o/r", accountId: "a", state: "exited", cloning: true }),
-    ).toBe("clone_failed");
+    it("keeps a helper that exited cleanly on cloning (the main container is next)", () => {
+      expect(toSessionStatus(clone("exited", 0))).toBe("cloning");
+    });
+
+    it.each([1, 128, 137, 143])("reports clone_failed on any non-zero helper exit (%i)", (code) => {
+      // Asymmetry with the agent branch, on purpose: a signalled agent was
+      // stopped (normal), but a signalled clone never finished (a failure).
+      expect(toSessionStatus(clone("exited", code))).toBe("clone_failed");
+    });
+
+    it("reports clone_failed on a dead helper", () => {
+      expect(toSessionStatus(clone("dead"))).toBe("clone_failed");
+    });
+
+    it("stays on cloning when the helper exited with an unreadable exit code", () => {
+      expect(toSessionStatus(clone("exited", null))).toBe("cloning");
+    });
   });
 });

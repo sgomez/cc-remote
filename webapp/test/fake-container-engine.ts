@@ -4,7 +4,7 @@
 // the real port contract rather than asserting call shapes.
 
 import type { LoginContainer } from "../src/core/domain/login";
-import type { SessionContainer } from "../src/core/domain/session";
+import type { ContainerState, SessionContainer } from "../src/core/domain/session";
 import type { WorkspaceGitProbe } from "../src/core/domain/workspace-state";
 import type {
   CloneContainerSpec,
@@ -48,9 +48,32 @@ export class FakeContainerEngine implements ContainerEngine {
     this.main.set(c.name, { ...c, state: "running", cloning: false });
   }
 
+  /**
+   * Simulate a main container in an arbitrary lifecycle state — a crash
+   * (`exited` + a small non-zero code), a deliberate stop (`exited` + 137/143),
+   * a paused or restarting container — so use cases and status derivation can
+   * be exercised beyond the running/stopped binary.
+   */
+  seedSession(c: {
+    name: string;
+    repo: string;
+    accountId: string;
+    state: ContainerState;
+    exitCode?: number | null;
+  }): void {
+    this.main.set(c.name, { ...c, cloning: false });
+  }
+
   /** Simulate a session mid-clone: only the running clone helper exists yet. */
-  seedCloningSession(c: { name: string; repo: string; accountId: string }): void {
-    this.clones.set(c.name, { ...c, state: "running", cloning: true });
+  seedCloningSession(c: {
+    name: string;
+    repo: string;
+    accountId: string;
+    state?: ContainerState;
+    exitCode?: number | null;
+  }): void {
+    const { state = "running", ...rest } = c;
+    this.clones.set(c.name, { ...rest, state, cloning: true });
   }
 
   /** Simulate credentials appearing in an Account Config Volume. */
@@ -96,7 +119,10 @@ export class FakeContainerEngine implements ContainerEngine {
 
   async awaitCloneExit(sessionName: string): Promise<number> {
     const clone = this.clones.get(sessionName);
-    if (clone) clone.state = "exited";
+    if (clone) {
+      clone.state = "exited";
+      clone.exitCode = this.nextCloneExit;
+    }
     return this.nextCloneExit;
   }
 
@@ -117,12 +143,20 @@ export class FakeContainerEngine implements ContainerEngine {
 
   async startContainer(sessionName: string): Promise<void> {
     const c = this.main.get(sessionName);
-    if (c) c.state = "running";
+    if (c) {
+      c.state = "running";
+      c.exitCode = null;
+    }
   }
 
   async stopContainer(sessionName: string): Promise<void> {
     const c = this.main.get(sessionName);
-    if (c) c.state = "exited";
+    if (c) {
+      c.state = "exited";
+      // What a real `docker stop` leaves on the agent: PID1 doesn't handle
+      // SIGTERM, so Docker SIGKILLs it after the timeout (128 + 9).
+      c.exitCode = 137;
+    }
   }
 
   async removeContainer(sessionName: string): Promise<void> {

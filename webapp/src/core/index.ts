@@ -26,6 +26,7 @@ export {
   isValidRepo,
   isValidSessionName,
   SESSION_LABELS,
+  toSessionStatus,
   workspaceVolumeName,
 } from "./domain/session";
 export type { WorkspaceGitProbe, WorkspaceState } from "./domain/workspace-state";
