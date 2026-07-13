@@ -102,11 +102,7 @@ function NewSessionPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <div className="hint">
-            container <code className="inline">cc-remote-session-{nameState.slug || "…"}</code> ·
-            volume <code className="inline">cc-remote-workspace-{nameState.slug || "…"}</code>
-            {nameState.taken && <span className="error-text"> — name already in use</span>}
-          </div>
+          {nameState.taken && <div className="hint error-text">Name already in use.</div>}
         </div>
 
         <div className="field">
