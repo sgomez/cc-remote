@@ -40,7 +40,7 @@ The `claude-agent` compose service exists **only to build the agent image** (`de
 
 ### Sibling containers, not Docker-in-Docker
 
-`web-manager` never runs Docker-in-Docker. It talks to the host's Docker daemon through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, read-only bind of `/var/run/docker.sock`, only `CONTAINERS`/`VOLUMES`/`POST` enabled) reachable at `tcp://docker-socket-proxy:2375` on the compose network only — no ports are published to the host. The Docker adapter (`webapp/src/adapters/docker/`, `dockerode`) works against that proxy to create/start/stop/remove **sibling** `claude-agent` containers and their volumes. This keeps the web-manager container from needing the raw socket mounted directly, so it runs unprivileged.
+`web-manager` never runs Docker-in-Docker. It talks to the host's Docker daemon through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, read-only bind of `/var/run/docker.sock`, only `CONTAINERS`/`VOLUMES`/`POST`/`EXEC` enabled — `EXEC` because the workspace git probe starts an exec, and `/exec/{id}/start` is not a `/containers` route) reachable at `tcp://docker-socket-proxy:2375` on the compose network only — no ports are published to the host. The Docker adapter (`webapp/src/adapters/docker/`, `dockerode`) works against that proxy to create/start/stop/remove **sibling** `claude-agent` containers and their volumes. This keeps the web-manager container from needing the raw socket mounted directly, so it runs unprivileged.
 
 ### webapp/ layout (ports and adapters)
 

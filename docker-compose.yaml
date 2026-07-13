@@ -21,9 +21,12 @@ services:
       - CONTAINERS=1
       - VOLUMES=1
       - POST=1
+      # EXEC gates /exec/{id}/start|json — needed by the workspace git probe
+      # (uncommitted-work guard before destroy/reset). Creating the exec is a
+      # /containers route, but starting it is not; without this it 403s.
+      - EXEC=1
       - IMAGES=0
       - NETWORKS=0
-      - EXEC=0
       - BUILD=0
       - INFO=0
     volumes:
