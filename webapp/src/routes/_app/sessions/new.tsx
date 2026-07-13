@@ -3,10 +3,11 @@
 // accounts greyed out (shown, not hidden); it tracks the #15 accounts SSE
 // stream live so an Account completing OAuth login in another tab enables its
 // radio without a reload. The repo is entered as `owner/name` (validated
-// against the domain repo shape) with a native autocomplete of the user's
-// GitHub repos (loaded server-side, `listRepos`). On submit the create-session
-// use case runs server-side and the user lands on the new session's detail
-// page, where the clone streams.
+// against the domain repo shape) through a real combobox (~/ui/components/
+// Combobox) over the user's GitHub repos (loaded server-side, `listRepos`) —
+// free text is still submittable, the list is just a shortcut. On submit the
+// create-session use case runs server-side and the user lands on the new
+// session's detail page, where the clone streams.
 
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import { listAccounts } from "~/server/accounts";
 import { listRepos } from "~/server/github";
 import { createSession, listSessions } from "~/server/sessions";
 import { ProviderBadge, StatusPill } from "~/ui/components/badges";
+import { Combobox } from "~/ui/components/Combobox";
 import { useLiveSnapshot } from "~/ui/live/live-status";
 import { accountStatusBadge } from "~/ui/view-models/badges";
 import {
@@ -109,21 +111,15 @@ function NewSessionPage() {
 
         <div className="field">
           <label htmlFor="session-repo">Repository (owner/name)</label>
-          <input
+          <Combobox
             id="session-repo"
-            list="repo-options"
-            placeholder="sgomez/cc-remote"
             value={repo}
-            onChange={(e) => setRepo(e.target.value)}
+            onChange={setRepo}
+            options={repos}
+            placeholder="sgomez/cc-remote"
+            noOptionsLabel="No GitHub repositories loaded — you can still type owner/name by hand."
+            noMatchesLabel={`No repositories match "${repo.trim()}" — you can still submit it as typed.`}
           />
-          <datalist id="repo-options">
-            {repos.map((r) => (
-              <option key={r} value={r} />
-            ))}
-          </datalist>
-          {repos.length > 0 && (
-            <div className="hint">Start typing to pick from your GitHub repositories.</div>
-          )}
           {repo.trim() !== "" && !repoValid(repo) && (
             <div className="hint error-text">Expected owner/name, e.g. sgomez/cc-remote</div>
           )}

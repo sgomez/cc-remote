@@ -1126,3 +1126,96 @@ html:active-view-transition-type(backward)::view-transition-new(main-content) {
     padding: 4px;
   }
 }
+
+/* ---- combobox (repo autocomplete) ----------------------------------------
+   Replaces a native <datalist> (unstyleable, no open affordance, inconsistent
+   keyboard behaviour) with a real ARIA 1.2 combobox: a plain text input (free
+   text always stays submittable) plus a filtered, keyboard-navigable listbox
+   that opens on focus, not only once the user starts typing. */
+.combobox {
+  position: relative;
+}
+.combobox-control {
+  position: relative;
+  display: flex;
+}
+.combobox-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 11px 38px 11px 14px;
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  transition: var(--transition);
+  outline: none;
+}
+.combobox-input:focus,
+.combobox-input:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+  background: rgba(15, 23, 42, 0.8);
+}
+/* Decorative open/closed affordance — the datalist regression's whole point
+   was that nothing signalled "this is a dropdown". Flips on `.open`. */
+.combobox-chevron {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -5px;
+  pointer-events: none;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: var(--transition);
+}
+.combobox-control.open .combobox-chevron {
+  margin-top: -2px;
+  transform: rotate(225deg);
+}
+.combobox-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: #111827;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.combobox-option {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.combobox-option:hover,
+.combobox-option.active {
+  background: var(--primary-glow);
+  color: #c7d2fe;
+}
+.combobox-option mark {
+  background: none;
+  color: #a5b4fc;
+  font-weight: 600;
+}
+.combobox-option.active mark {
+  color: #eef2ff;
+}
+.combobox-empty {
+  padding: 14px 12px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
