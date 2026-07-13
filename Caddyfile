@@ -1,3 +1,18 @@
 {$DOMAIN_NAME} {
-    reverse_proxy web-manager:4000
+	# S4 hardening: security headers at the edge (2026-07-13 architecture review).
+	# HSTS without preload/includeSubDomains — this Caddyfile only ever serves
+	# DOMAIN_NAME itself, so subdomain coverage would be overreach; nosniff stops
+	# MIME-sniffing a response into something executable; frame-ancestors 'none'
+	# is the modern replacement for X-Frame-Options (no legitimate reason to frame
+	# this app); no-referrer keeps the URL (which can carry session-bearing paths)
+	# out of any Referer header sent to third parties.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Content-Security-Policy "frame-ancestors 'none'"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy web-manager:4000
 }
