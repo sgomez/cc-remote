@@ -35,7 +35,7 @@ describe("isSessionLabelled (the guard)", () => {
 });
 
 describe("toSessionContainer", () => {
-  it("reads name/repo/accountId from labels and passes state through", () => {
+  it("reads name/repo/accountId from labels and normalises the state", () => {
     const sc = toSessionContainer({
       labels: {
         [SESSION_LABELS.marker]: "true",
@@ -50,6 +50,7 @@ describe("toSessionContainer", () => {
       repo: "octocat/hello",
       accountId: "acc-1",
       state: "running",
+      exitCode: null,
       cloning: false,
     });
   });

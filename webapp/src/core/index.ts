@@ -16,7 +16,12 @@ export {
   requireProviderType,
 } from "./domain/provider-type";
 export { ACCOUNT_CONFIG_FILE, buildAnthropicEnv, wizardSkipConfig } from "./domain/seeding";
-export type { Session, SessionContainer, SessionStatus } from "./domain/session";
+export type {
+  ContainerState,
+  Session,
+  SessionContainer,
+  SessionStatus,
+} from "./domain/session";
 export {
   isValidRepo,
   isValidSessionName,

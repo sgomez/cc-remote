@@ -4,11 +4,34 @@
 // never invents label keys.
 
 import {
+  type ContainerState,
   LOGIN_LABELS,
   type LoginContainer,
   SESSION_LABELS,
   type SessionContainer,
 } from "../../core";
+
+/** Docker's own lifecycle vocabulary — the only place it is spelled out. */
+const CONTAINER_STATES: readonly ContainerState[] = [
+  "running",
+  "created",
+  "restarting",
+  "paused",
+  "removing",
+  "exited",
+  "dead",
+];
+
+/**
+ * Translate the engine's raw state string into the closed domain vocabulary.
+ * The one mapping point (D6): core branches on `ContainerState`, never on
+ * Docker's words, and a state Docker adds tomorrow lands on `unknown` rather
+ * than being read as "stopped".
+ */
+export function toContainerState(raw: string): ContainerState {
+  const state = raw.toLowerCase();
+  return CONTAINER_STATES.find((known) => known === state) ?? "unknown";
+}
 
 /** The `cc-remote-session-<name>` container that runs the agent. */
 export function mainContainerName(sessionName: string): string {
@@ -31,19 +54,21 @@ export function isSessionLabelled(labels: Record<string, string> | undefined | n
 
 /**
  * Map a labelled container (its labels + raw engine state) to a
- * SessionContainer. `state` is passed through verbatim — status synthesis
- * (`cloning`/`clone_failed`) is the domain's job, not the adapter's.
+ * SessionContainer. The state is normalised into the domain vocabulary here;
+ * status synthesis (`cloning`/`clone_failed`/`error`) stays the domain's job.
  */
 export function toSessionContainer(view: {
   labels: Record<string, string>;
   state: string;
+  exitCode?: number | null;
 }): SessionContainer {
-  const { labels, state } = view;
+  const { labels, state, exitCode } = view;
   return {
     name: labels[SESSION_LABELS.name] ?? "",
     repo: labels[SESSION_LABELS.repo] ?? "",
     accountId: labels[SESSION_LABELS.accountId] ?? "",
-    state,
+    state: toContainerState(state),
+    exitCode: exitCode ?? null,
     cloning: labels[SESSION_LABELS.cloning] === "true",
   };
 }

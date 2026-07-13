@@ -13,13 +13,7 @@ import type {
   SessionContainerSpec,
 } from "../src/core/ports/container-engine";
 
-type Container = {
-  name: string;
-  repo: string;
-  accountId: string;
-  state: string;
-  cloning: boolean;
-};
+type Container = SessionContainer;
 
 export class FakeContainerEngine implements ContainerEngine {
   private readonly main = new Map<string, Container>();

@@ -4,7 +4,37 @@
 
 import { InvalidRepoError, InvalidSessionNameError } from "./errors";
 
-export type SessionStatus = "running" | "stopped" | "cloning" | "clone_failed";
+/**
+ * Docker's container lifecycle, as a closed domain vocabulary. The adapter maps
+ * the engine's raw string here exactly once (`toContainerState`), so core never
+ * branches on Docker's own words and an engine state we don't know about lands
+ * on `unknown` instead of being silently read as "stopped".
+ */
+export type ContainerState =
+  | "running"
+  | "created"
+  | "restarting"
+  | "paused"
+  | "removing"
+  | "exited"
+  | "dead"
+  | "unknown";
+
+/**
+ * A Session's status. Wider than Docker's binary running/not-running so the UI
+ * can tell a crashed agent apart from one the user stopped on purpose: `error`
+ * means the container died on its own, `stopped` means it was asked to.
+ */
+export type SessionStatus =
+  | "running"
+  | "starting"
+  | "restarting"
+  | "paused"
+  | "stopped"
+  | "error"
+  | "cloning"
+  | "clone_failed"
+  | "unknown";
 
 export type Session = {
   name: string;
@@ -14,14 +44,17 @@ export type Session = {
 };
 
 /**
- * A session-labelled container as reported by the ContainerEngine. `state` is
- * the raw engine state; `cloning` marks the two-phase clone-helper container.
+ * A session-labelled container as reported by the ContainerEngine. `cloning`
+ * marks the two-phase clone-helper container. `exitCode` is only meaningful
+ * once `state` is `exited`, and is what separates a deliberate stop from a
+ * crash (see `toSessionStatus`).
  */
 export type SessionContainer = {
   name: string;
   repo: string;
   accountId: string;
-  state: string;
+  state: ContainerState;
+  exitCode?: number | null;
   cloning: boolean;
 };
 
