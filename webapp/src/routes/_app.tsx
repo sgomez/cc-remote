@@ -6,7 +6,7 @@
 // sign-out control; children render in the <Outlet/>.
 
 import { createFileRoute, Link, Outlet, redirect, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signOut } from "~/adapters/auth/client";
 import { fetchSession } from "~/server/auth";
 import { FeedbackProvider } from "~/ui/components/feedback";
@@ -27,6 +27,16 @@ function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
+  // Escape closes the open drawer (the overlay handles click-outside).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   const doSignOut = async () => {
     await signOut();
     router.navigate({ to: "/login" });
@@ -42,6 +52,7 @@ function AppLayout() {
             className="burger"
             aria-label="Open menu"
             aria-expanded={menuOpen}
+            aria-controls="app-nav"
             onClick={() => setMenuOpen(true)}
           >
             <svg
@@ -74,7 +85,7 @@ function AppLayout() {
           />
         )}
 
-        <nav className={`sidebar${menuOpen ? " open" : ""}`}>
+        <nav id="app-nav" className={`sidebar${menuOpen ? " open" : ""}`}>
           <div className="brand">
             cc-remote<span className="tld">:~</span>
             <span className="blink">▊</span>

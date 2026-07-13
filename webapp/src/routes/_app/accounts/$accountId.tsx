@@ -126,7 +126,7 @@ function AccountDetailPage() {
           </dd>
           <dt>capabilities</dt>
           <dd>
-            <span className="actions" style={{ marginTop: 0 }}>
+            <span className="badge-row">
               <Capability on={caps.remoteControl} label="remote control" />
               <span className="badge cap">seeding: {caps.seedingLabel}</span>
             </span>

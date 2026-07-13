@@ -14,7 +14,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { addToast, dismissToast, type Toast, type ToastKind } from "~/ui/live/toasts";
+import {
+  addToast,
+  dismissToast,
+  type Toast,
+  type ToastKind,
+  toastAutoDismissMs,
+} from "~/ui/live/toasts";
 
 export type ConfirmOptions = {
   title: string;
@@ -67,7 +73,9 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   const push = useCallback((kind: ToastKind, message: string) => {
     const id = `toast-${nextId.current++}`;
     setToasts((state) => addToast(state, { kind, message }, id));
-    setTimeout(() => setToasts((state) => dismissToast(state, id)), kind === "error" ? 6000 : 4000);
+    // Error toasts persist until dismissed (null delay); success toasts fade.
+    const ms = toastAutoDismissMs(kind);
+    if (ms !== null) setTimeout(() => setToasts((state) => dismissToast(state, id)), ms);
   }, []);
 
   const api = useMemo<FeedbackApi>(

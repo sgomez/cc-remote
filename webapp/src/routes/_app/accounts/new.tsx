@@ -102,7 +102,7 @@ function TypeForm({ typeId }: { typeId: string }) {
   };
 
   return (
-    <div className="panel" style={{ maxWidth: 560 }}>
+    <div className="panel narrow">
       <h2>{type.label}</h2>
 
       {spec.fields.map((f) => (
@@ -127,7 +127,7 @@ function TypeForm({ typeId }: { typeId: string }) {
       {spec.oauthNotice && (
         <div className="panel warn" style={{ marginTop: 12 }}>
           <strong className="warn-text">Next step: Login Container.</strong>
-          <p className="subtle" style={{ margin: "6px 0 0" }}>
+          <p className="subtle tight">
             After creating the account you will complete <code className="inline">claude</code>{" "}
             login in an ephemeral container's web terminal. The account stays at pending login until
             credentials appear in its config volume.

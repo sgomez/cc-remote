@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addToast, dismissToast, type Toast } from "./toasts";
+import { addToast, dismissToast, type Toast, toastAutoDismissMs } from "./toasts";
 
 describe("toast queue reducer", () => {
   it("appends a toast carrying the given id, kind and message", () => {
@@ -25,5 +25,15 @@ describe("toast queue reducer", () => {
   it("dismissing an unknown id leaves the queue unchanged", () => {
     const state: Toast[] = [{ id: "t1", kind: "error", message: "a" }];
     expect(dismissToast(state, "nope")).toEqual(state);
+  });
+});
+
+describe("toastAutoDismissMs", () => {
+  it("returns null for error toasts so they persist until dismissed", () => {
+    expect(toastAutoDismissMs("error")).toBeNull();
+  });
+
+  it("returns a finite delay for success toasts", () => {
+    expect(toastAutoDismissMs("success")).toBe(4000);
   });
 });

@@ -91,7 +91,7 @@ function NewSessionPage() {
         </div>
       </div>
 
-      <div className="panel" style={{ maxWidth: 640 }}>
+      <div className="panel narrow">
         <div className="field">
           <label htmlFor="session-name">Session name</label>
           <input

@@ -20,3 +20,13 @@ export function addToast(state: Toast[], toast: Omit<Toast, "id">, id: string): 
 export function dismissToast(state: Toast[], id: string): Toast[] {
   return state.filter((t) => t.id !== id);
 }
+
+/**
+ * How long a toast of this kind stays before auto-dismissing, in ms. Error
+ * toasts return `null` — they persist until the user dismisses them by hand,
+ * because failure messages (e.g. long Docker daemon strings) need time to read
+ * and copy. Success toasts keep a short timer.
+ */
+export function toastAutoDismissMs(kind: ToastKind): number | null {
+  return kind === "error" ? null : 4000;
+}

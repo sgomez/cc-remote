@@ -40,6 +40,7 @@ export function Terminal({ title, wsPath }: { title: string; wsPath: string }) {
         import("@xterm/addon-fit"),
       ]);
       if (disposed || !mountRef.current) return;
+      const mount = mountRef.current;
 
       const term = new Xterm({
         cursorBlink: true,
@@ -49,7 +50,7 @@ export function Terminal({ title, wsPath }: { title: string; wsPath: string }) {
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
-      term.open(mountRef.current);
+      term.open(mount);
       fit.fit();
 
       const ws = new WebSocket(wsUrl(wsPath), ["tty"]);
@@ -89,8 +90,15 @@ export function Terminal({ title, wsPath }: { title: string; wsPath: string }) {
       window.addEventListener("resize", onResize);
       const resizeSub = term.onResize(() => sendResize());
 
+      // The mount height is CSS-driven (clamp on viewport), so a window resize
+      // isn't the only thing that reflows it — observe the element itself so
+      // xterm refits whenever the container's box changes.
+      const ro = new ResizeObserver(onResize);
+      ro.observe(mount);
+
       cleanup = () => {
         window.removeEventListener("resize", onResize);
+        ro.disconnect();
         onData.dispose();
         resizeSub.dispose();
         try {

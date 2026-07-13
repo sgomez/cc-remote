@@ -1,16 +1,14 @@
-// Accounts list (#16). Provider Type badge + capabilities (remote control,
-// Seeding Method), status (ready green / pending_login pulsing amber), and the
-// sessions-in-use count. Status tracks the accounts SSE stream live so a
-// `pending_login`→`ready` flip (Login-Container poller) morphs in place.
+// Accounts list (#16). Row 1 is identity + status (ready green / pending_login
+// pulsing amber); row 2 carries the Provider Type badge and the sessions-in-use
+// count. Status tracks the accounts SSE stream live so a `pending_login`→`ready`
+// flip (Login-Container poller) morphs in place.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { AccountStatus } from "~/core";
-import { requireProviderType } from "~/core";
 import { listAccounts } from "~/server/accounts";
-import { Capability, ProviderBadge, StatusPill } from "~/ui/components/badges";
+import { ProviderBadge, StatusPill } from "~/ui/components/badges";
 import { useLiveSnapshot } from "~/ui/live/live-status";
 import { accountStatusBadge } from "~/ui/view-models/badges";
-import { accountCapabilities } from "~/ui/view-models/capabilities";
 import type { AccountRow } from "~/ui/view-models/rows";
 
 type LiveStatus = { id: string; status: AccountStatus };
@@ -45,8 +43,6 @@ function AccountsPage() {
 
       <div className="card-list">
         {accounts.map((a: AccountRow) => {
-          const type = requireProviderType(a.providerType);
-          const caps = accountCapabilities(type);
           const status = statusById.get(a.id) ?? a.status;
           const badge = accountStatusBadge(status);
           return (
@@ -61,18 +57,16 @@ function AccountsPage() {
                 <span className="card-title" style={{ viewTransitionName: `acct-title-${a.id}` }}>
                   {a.displayName}
                 </span>
-                <ProviderBadge providerType={a.providerType} />
                 <span className="spacer" />
+                <StatusPill badge={badge} vtName={`acct-status-${a.id}`} />
+              </div>
+              <div className="card-row">
+                <ProviderBadge providerType={a.providerType} />
                 <span className="card-meta">
                   {a.sessionsInUse > 0
                     ? `${a.sessionsInUse} session${a.sessionsInUse > 1 ? "s" : ""}`
                     : "unused"}
                 </span>
-                <StatusPill badge={badge} vtName={`acct-status-${a.id}`} />
-              </div>
-              <div className="card-row" style={{ marginTop: 8 }}>
-                <Capability on={caps.remoteControl} label="remote control" />
-                <span className="badge cap">seeding: {caps.seedingLabel}</span>
               </div>
             </Link>
           );

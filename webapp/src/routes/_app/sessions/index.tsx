@@ -58,12 +58,13 @@ function SessionsPage() {
                   <span className="prefix">session/</span>
                   {s.name}
                 </span>
-                <span className="card-meta">{s.repo}</span>
                 <span className="spacer" />
                 <StatusPill badge={badge} vtName={`sess-status-${s.name}`} />
               </div>
-              <div className="card-row" style={{ marginTop: 8 }}>
-                <span className="card-meta">account: {account?.displayName ?? s.accountId}</span>
+              <div className="card-row">
+                <span className="card-meta">
+                  {s.repo} · account: {account?.displayName ?? s.accountId}
+                </span>
                 {account && <ProviderBadge providerType={account.providerType} />}
               </div>
             </Link>
