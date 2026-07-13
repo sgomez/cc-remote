@@ -36,6 +36,14 @@ export class FakeContainerEngine implements ContainerEngine {
   };
   /** Session names `probeWorkspaceGit` was called with, for assertions. */
   readonly probedWorkspaces: string[] = [];
+  /**
+   * What the next `readSessionLogs` yields: decoded log text, or an Error to
+   * throw (models an unreadable container — the read path must stay honest
+   * about a failure rather than render an empty box).
+   */
+  nextSessionLogs: string | Error = "";
+  /** Log reads the use cases performed, for assertions. */
+  readonly logReads: { sessionName: string; tail: number }[] = [];
   /** Records specs the use cases passed, for assertions. */
   readonly runSessionSpecs: SessionContainerSpec[] = [];
   readonly runCloneSpecs: CloneContainerSpec[] = [];
@@ -167,6 +175,12 @@ export class FakeContainerEngine implements ContainerEngine {
     this.probedWorkspaces.push(sessionName);
     if (this.nextWorkspaceProbe instanceof Error) throw this.nextWorkspaceProbe;
     return this.nextWorkspaceProbe;
+  }
+
+  async readSessionLogs(sessionName: string, options: { tail: number }): Promise<string> {
+    this.logReads.push({ sessionName, tail: options.tail });
+    if (this.nextSessionLogs instanceof Error) throw this.nextSessionLogs;
+    return this.nextSessionLogs;
   }
 
   async runLoginContainer(spec: LoginContainerSpec): Promise<void> {

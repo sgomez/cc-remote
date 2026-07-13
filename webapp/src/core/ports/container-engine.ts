@@ -71,6 +71,15 @@ export interface ContainerEngine {
    */
   probeWorkspaceGit(sessionName: string): Promise<WorkspaceGitProbe>;
 
+  /**
+   * Tail the container output of a session, for diagnosing one that did not come
+   * up. Resolves main-else-clone-helper (like `getSessionContainer`) under the
+   * same label guard, and works for a stopped/exited container — that is the
+   * case it exists for. Returns decoded text: the adapter owns Docker's stream
+   * framing, the core never sees a byte of it.
+   */
+  readSessionLogs(sessionName: string, options: { tail: number }): Promise<string>;
+
   /** Create and start the Login Container for an Account (#14). */
   runLoginContainer(spec: LoginContainerSpec): Promise<void>;
   /** The Login Container for `accountId`, or null (idempotent re-entry/recovery). */

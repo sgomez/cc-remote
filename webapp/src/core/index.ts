@@ -29,6 +29,8 @@ export {
   toSessionStatus,
   workspaceVolumeName,
 } from "./domain/session";
+export type { SessionLogs, SessionLogsSource } from "./domain/session-logs";
+export { DEFAULT_LOG_TAIL, sanitizeLogText } from "./domain/session-logs";
 export type { WorkspaceGitProbe, WorkspaceState } from "./domain/workspace-state";
 export { parseWorkspaceProbe, WORKSPACE_PROBE_SEPARATOR } from "./domain/workspace-state";
 
@@ -55,6 +57,10 @@ export { type DestroySessionInput, makeDestroySession } from "./usecases/destroy
 export { makeListSessions } from "./usecases/list-sessions";
 export { type MarkAccountReadyInput, makeMarkAccountReady } from "./usecases/mark-account-ready";
 export { makePollLogins } from "./usecases/poll-logins";
+export {
+  makeReadSessionLogs,
+  type ReadSessionLogsInput,
+} from "./usecases/read-session-logs";
 export {
   makeReadWorkspaceState,
   type ReadWorkspaceStateInput,
