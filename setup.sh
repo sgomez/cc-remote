@@ -14,12 +14,30 @@ echo -e "${BLUE}   Claude Code Remote Setup (Consolidated)     ${NC}"
 echo -e "${BLUE}===============================================${NC}"
 echo ""
 
+# Host facts config.js cannot see for itself: it runs inside a throwaway container
+# (so the wizard needs no Node on the host), and web-manager can't discover them
+# at runtime either — `docker info` is blocked on the socket proxy (INFO=0) and
+# that stays blocked. So the agent memory/CPU caps are DERIVED HERE, from the real
+# host, and compiled into .env. A container's /proc/meminfo shows the host's RAM,
+# but nproc inside it is bounded by the container's own cpuset, hence reading both
+# out here.
+#
+# Total RAM in MiB. Linux: /proc/meminfo (MemTotal is in kB). macOS: sysctl.
+if [ -r /proc/meminfo ]; then
+  HOST_MEM_MB=$(awk '/^MemTotal:/ {printf "%d", $2 / 1024}' /proc/meminfo)
+elif command -v sysctl >/dev/null 2>&1; then
+  HOST_MEM_MB=$(( $(sysctl -n hw.memsize) / 1048576 ))
+fi
+HOST_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+
 # Run the config script inside a lightweight Node container
 docker run --rm -it \
   -v "$(pwd)":/app \
   -w /app \
   -e HOST_UID="$(id -u)" \
   -e HOST_GID="$(id -g)" \
+  -e HOST_MEM_MB="${HOST_MEM_MB}" \
+  -e HOST_CPUS="${HOST_CPUS}" \
   node:22-slim node config.js "$@"
 
 # Nothing to prepare on the host: agent containers mount named Docker volumes

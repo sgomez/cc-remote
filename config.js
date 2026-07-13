@@ -34,6 +34,133 @@ const questionSecret = (query) => new Promise((resolve) => {
   isMuted = true;
 });
 
+// --- Agent resource limits (S4) -------------------------------------------------
+//
+// Agent containers run untrusted, AI-generated code under `--permission-mode auto`.
+// With no memory cap, one runaway build or alloc bomb exhausts the VPS's RAM and the
+// kernel takes down every Session AND web-manager — the very thing you'd use to log
+// in from your phone and fix it. So every agent container gets a hard cap.
+//
+// The value can't be a constant (it depends on the host) and web-manager can't
+// discover it at runtime (`docker info` is blocked on the socket proxy, deliberately).
+// setup.sh CAN see the host, so it measures RAM/CPUs and passes them in here, and we
+// derive a default with no extra prompt — the same way the wizard already derives the
+// auth secret, PUID/PGID, git identity and permission mode.
+//
+// THE ASSUMPTION THIS ENCODES, stated so you can disagree with it: about TWO Sessions
+// are memory-hot at the same time, and the control plane + host need ~1 GiB. This is a
+// fleet manager, so the cap is PER CONTAINER and is NOT a total — N running Sessions
+// can still add up past RAM. It is a blast-radius limit (one bad agent can't take the
+// box), not an admission controller. Run many heavy Sessions at once and you can still
+// overcommit; lower the value (see below) if you plan to.
+const MEM_RESERVE_MB = 1024; // host OS + web-manager (Node SSR) + caddy + socket proxy
+const MEM_ASSUMED_CONCURRENT = 2; // Sessions assumed memory-hot at once
+const MEM_FLOOR_MB = 512; // below this Claude Code itself is unusable
+const MEM_CEIL_MB = 8192; // past this you're just letting a runaway eat more
+const MEM_GRANULARITY_MB = 128; // round down to a tidy value
+
+function deriveMemoryLimitMb(hostMemMb) {
+  if (!hostMemMb || hostMemMb <= 0) return MEM_FLOOR_MB; // unknown host: be conservative
+  const budget = (hostMemMb - MEM_RESERVE_MB) / MEM_ASSUMED_CONCURRENT;
+  const rounded = Math.floor(budget / MEM_GRANULARITY_MB) * MEM_GRANULARITY_MB;
+  // Clamp. The floor matters most: a 2 GiB VPS derives exactly 512m, and anything
+  // under ~512m makes Claude Code itself unusable (Docker's own minimum is 6m, which
+  // is useless here). The ceiling matters on big hosts: no single agent needs more
+  // than 8 GiB, and a bigger cap only widens the blast radius.
+  return Math.min(Math.max(rounded, MEM_FLOOR_MB), MEM_CEIL_MB);
+}
+
+// CPU is a throttle, not a killer: a pegged core degrades the box, it doesn't OOM it.
+// The cap exists so one runaway `make -j` can't starve web-manager of the CPU it needs
+// to still answer "stop that Session". Half the host's cores (min 1) leaves the control
+// plane room while letting a normal parallel `pnpm build` inside an agent run at real
+// speed.
+function deriveCpuLimit(hostCpus) {
+  const cpus = Number.parseInt(hostCpus, 10);
+  if (!Number.isInteger(cpus) || cpus < 1) return 1;
+  return Math.max(1, Math.floor(cpus / 2));
+}
+
+// Mirror of parseMemoryBytes() in webapp/src/adapters/docker/config.ts — this file runs
+// in a throwaway node:22-slim container and cannot import the webapp's TypeScript. Keep
+// the two in sync. Validation lives HERE so a bad value is caught in the wizard, where a
+// human is looking at it, and not at 3am in `docker compose logs`.
+const MIN_MEMORY_BYTES = 6 * 1024 * 1024; // Docker's own --memory minimum
+function parseMemoryBytes(value) {
+  const raw = String(value ?? '').trim();
+  if (raw === '') return 0;
+  const match = raw.match(/^(\d+(?:\.\d+)?)\s*([bkmg])?b?$/i);
+  if (!match) throw new Error(`"${raw}" is not a byte count or a size like 512m / 2g / 1.5g`);
+  const scale = { b: 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 }[(match[2] || 'b').toLowerCase()];
+  const bytes = Math.floor(Number.parseFloat(match[1]) * scale);
+  if (bytes === 0) return 0; // explicit opt-out
+  if (bytes < MIN_MEMORY_BYTES) {
+    throw new Error(`"${raw}" is below Docker's 6m minimum (${bytes} bytes)`);
+  }
+  return bytes;
+}
+
+function parseCpuLimit(value) {
+  const raw = String(value ?? '').trim();
+  if (raw === '') return 0;
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) {
+    throw new Error(`"${raw}" is not a positive number of CPU cores (e.g. 1, 1.5, 0.5)`);
+  }
+  return Number.parseFloat(raw);
+}
+
+/**
+ * Resolve the agent limits: a value already in config.json (ours from a previous run, or
+ * the user's own edit) is kept; otherwise derive one from the host. Validates either way,
+ * and always explains what it picked — a silent cap that strangles a build is worse than
+ * a loud one.
+ */
+function resolveAgentLimits(config) {
+  const hostMemMb = Number.parseInt(process.env.HOST_MEM_MB || '', 10);
+  const hostCpus = process.env.HOST_CPUS || '';
+
+  const configuredMem = config.resources?.agentMemoryLimit;
+  const configuredCpu = config.resources?.agentCpuLimit;
+  const wasConfigured = configuredMem != null || configuredCpu != null;
+
+  const memoryLimit = configuredMem || `${deriveMemoryLimitMb(hostMemMb)}m`;
+  const cpuLimit = configuredCpu != null ? String(configuredCpu) : String(deriveCpuLimit(hostCpus));
+
+  // Validate BOTH paths (a hand-edited config.json is exactly where a typo lands).
+  let memoryBytes;
+  try {
+    memoryBytes = parseMemoryBytes(memoryLimit);
+    parseCpuLimit(cpuLimit);
+  } catch (e) {
+    console.error(`\n\x1b[31m[Error] Invalid agent resource limit in config.json: ${e.message}\x1b[0m`);
+    console.error('\x1b[31m        Fix "resources" in config.json (e.g. "agentMemoryLimit": "2g", "agentCpuLimit": 2) and rerun.\x1b[0m');
+    process.exit(1);
+  }
+
+  console.log('\n\x1b[35m--- Agent Resource Limits ---\x1b[0m');
+  const hostDesc = hostMemMb > 0 ? `${(hostMemMb / 1024).toFixed(1)} GiB RAM / ${hostCpus || '?'} CPUs` : 'unknown (host RAM not detected)';
+  console.log(`Host: ${hostDesc}`);
+  if (wasConfigured) {
+    console.log(`\x1b[36mKeeping the values already in config.json: memory=${memoryLimit}, cpus=${cpuLimit}\x1b[0m`);
+    console.log('  Delete the "resources" block from config.json to re-derive them from this host.');
+  } else {
+    console.log(`\x1b[36mDerived per-container caps: memory=${memoryLimit}, cpus=${cpuLimit}\x1b[0m`);
+    console.log(`  memory = (host RAM - ${MEM_RESERVE_MB}m reserved for the host + web-manager + caddy + proxy) / ${MEM_ASSUMED_CONCURRENT} concurrent Sessions,`);
+    console.log(`           clamped to [${MEM_FLOOR_MB}m, ${MEM_CEIL_MB}m]. Swap is disabled, so this is a HARD ceiling.`);
+    console.log(`  cpus   = half the host's cores (min 1), so a runaway build can't starve web-manager.`);
+  }
+  console.log('\x1b[33mThis is a PER-CONTAINER cap, not a fleet total: enough Sessions at once can still\x1b[0m');
+  console.log('\x1b[33moverspend the host. To change it, edit "resources" in config.json (NOT .env, which is\x1b[0m');
+  console.log('\x1b[33mrecompiled from config.json on every ./setup.sh run) and rerun ./setup.sh.\x1b[0m');
+  if (memoryBytes > 0 && memoryBytes < 1024 ** 3) {
+    console.log('\x1b[33m[Warning] Under 1 GiB per agent: a large `pnpm build`/`cargo build` inside a Session\x1b[0m');
+    console.log('\x1b[33m          may get OOM-killed (it will show up as a red "crashed" badge). Consider a\x1b[0m');
+    console.log('\x1b[33m          bigger host, or raise the value and run fewer Sessions at once.\x1b[0m');
+  }
+
+  return { memoryLimit, cpuLimit };
+}
+
 async function main() {
   let config = {};
   const configFile = 'config.json';
@@ -151,6 +278,9 @@ async function main() {
   const hostUid = process.env.HOST_UID || '1000';
   const hostGid = process.env.HOST_GID || '1000';
 
+  // Derived (or overridden) per-container memory/CPU caps. Exits non-zero on a bad value.
+  const limits = resolveAgentLimits(config);
+
   // Construct JSON config
   const finalConfig = {
     git: {
@@ -176,6 +306,14 @@ async function main() {
     user: {
       puid: hostUid,
       pgid: hostGid
+    },
+    // Per-container agent caps. Written back on every run so they are visible and
+    // hand-editable: change them HERE (not in .env, which is recompiled from this
+    // file) and rerun ./setup.sh. Once set, an explicit value is kept as an override
+    // and is never re-derived — clear the key to go back to host-derived defaults.
+    resources: {
+      agentMemoryLimit: limits.memoryLimit,
+      agentCpuLimit: limits.cpuLimit
     }
   };
 
@@ -210,7 +348,14 @@ async function main() {
     `COMPOSE_PROFILES="${enableCaddy ? 'caddy' : ''}"`,
     `PUID="${hostUid}"`,
     `PGID="${hostGid}"`,
-    `BETTER_AUTH_SECRET="${betterAuthSecret}"`
+    `BETTER_AUTH_SECRET="${betterAuthSecret}"`,
+    ``,
+    `# Per-container agent resource caps, derived from this host by config.js (see the`,
+    `# "resources" block in config.json to change them — editing THIS file won't survive`,
+    `# a ./setup.sh rerun). Memory accepts human units (512m, 2g, 1.5g) or raw bytes;`,
+    `# swap is pinned to the same value, so it is a hard ceiling. CPU is in cores.`,
+    `AGENT_MEMORY_LIMIT="${limits.memoryLimit}"`,
+    `AGENT_CPU_LIMIT="${limits.cpuLimit}"`
   ].join('\n') + '\n';
 
   fs.writeFileSync('.env', envContent, 'utf8');

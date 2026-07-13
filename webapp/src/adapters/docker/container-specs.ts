@@ -71,20 +71,49 @@ function disownCompose(labels: Record<string, string> = {}): Record<string, stri
 }
 
 /**
- * Shared hardening flags carried over from the legacy Express web-manager.
- * `NetworkMode` is part of the hardening: `config.network` is the AGENTS network,
- * which docker-socket-proxy is NOT on, so nothing running in an agent container
- * can reach the Docker API.
+ * THE hardening. Every container this adapter creates goes through here — the
+ * Session, the Login Container, the clone helper and both short-lived volume
+ * helpers. It is a single function precisely because it used not to be: each of
+ * those five built its `HostConfig` inline and only the Session ever got
+ * `Memory`, while the clone helper — the one that unpacks arbitrarily large
+ * repos — had no `PidsLimit` at all. A table of five hand-maintained copies is
+ * how a limit goes missing; adding one here cannot miss a call site.
+ *
+ * What it pins, and why:
+ *
+ * - `NetworkMode` — `config.network` is the AGENTS network, which
+ *   docker-socket-proxy is NOT on, so nothing inside an agent container can
+ *   reach the Docker API (the S1 trust boundary; see docker-compose.yaml).
+ * - `Memory` + `MemorySwap` — an agent runs untrusted, AI-generated code under
+ *   `--permission-mode auto`. Unbounded, one runaway build or alloc bomb takes
+ *   the whole VPS down, *including web-manager*, i.e. the thing you would use to
+ *   log in and kill it. `MemorySwap` is set EQUAL to `Memory` on purpose: that
+ *   is Docker's spelling for "no swap". Leaving it unset defaults swap to 2x the
+ *   limit, so a "2g" container can still touch 4g and thrash the host's disk —
+ *   the cap would look real and not be one. (On a host with swap accounting off,
+ *   Docker only *warns*; the memory cap still applies.)
+ * - `NanoCpus` — uniformly, even on the seed helper that just writes a JSON file
+ *   and could not care less. A CPU share costs a short-lived container nothing,
+ *   and "apply it only where it matters" is the reasoning that produced the
+ *   missing `PidsLimit` above.
+ * - `PidsLimit` — fork-bomb ceiling.
+ * - `no-new-privileges` — no setuid escalation.
+ *
+ * The Session adds its restart policy on top; the ephemeral containers must not
+ * have one (they are expected to exit).
  */
 function baseHostConfig(config: DockerAdapterConfig, binds: string[]): Docker.HostConfig {
   const hostConfig: Docker.HostConfig = {
     Binds: binds,
-    RestartPolicy: { Name: config.restartPolicy },
     SecurityOpt: ["no-new-privileges:true"],
     PidsLimit: config.pidsLimit,
     NetworkMode: config.network,
   };
-  if (config.memoryLimit) hostConfig.Memory = config.memoryLimit;
+  if (config.memoryLimit) {
+    hostConfig.Memory = config.memoryLimit;
+    hostConfig.MemorySwap = config.memoryLimit;
+  }
+  if (config.nanoCpus) hostConfig.NanoCpus = config.nanoCpus;
   return hostConfig;
 }
 
@@ -112,7 +141,7 @@ export function buildSessionCreateOptions(
     OpenStdin: true,
     Env: mergeEnv(infra, spec.env),
     Labels: disownCompose(spec.labels),
-    HostConfig: baseHostConfig(config, binds),
+    HostConfig: { ...baseHostConfig(config, binds), RestartPolicy: { Name: config.restartPolicy } },
   };
 }
 
@@ -145,18 +174,16 @@ export function buildLoginCreateOptions(
     Cmd: ["sh", "-c", ttyd],
     Env: toEnvArray(env),
     Labels: disownCompose(spec.labels),
-    HostConfig: {
-      Binds: [`${spec.accountConfigVolume}:${ACCOUNT_CONFIG_MOUNT}`],
-      SecurityOpt: ["no-new-privileges:true"],
-      PidsLimit: config.pidsLimit,
-      NetworkMode: config.network,
-    },
+    // No RestartPolicy: ephemeral (the login poll destroys it once login completes).
+    HostConfig: baseHostConfig(config, [`${spec.accountConfigVolume}:${ACCOUNT_CONFIG_MOUNT}`]),
   };
 }
 
 /**
  * Clone-helper container (phase one). Entrypoint overridden to a bare clone +
  * chown; credentials arrive via GITHUB_TOKEN/GITHUB_REPO env, never the Cmd.
+ * Fully hardened like everything else: `git clone` of a hostile or merely huge
+ * repo is one of the few things here that can genuinely exhaust RAM.
  */
 export function buildCloneCreateOptions(
   spec: CloneContainerSpec,
@@ -170,11 +197,7 @@ export function buildCloneCreateOptions(
     Cmd: ["sh", "-c", CLONE_CMD],
     Env: mergeEnv(infraEnv(config), spec.env),
     Labels: disownCompose(spec.labels),
-    HostConfig: {
-      Binds: [`${spec.workspaceVolume}:${WORKSPACE_MOUNT}`],
-      SecurityOpt: ["no-new-privileges:true"],
-      NetworkMode: config.network,
-    },
+    HostConfig: baseHostConfig(config, [`${spec.workspaceVolume}:${WORKSPACE_MOUNT}`]),
   };
 }
 
@@ -212,16 +235,13 @@ export function buildSeedCreateOptions(
       PGID: config.pgid,
     }),
     Labels: disownCompose(),
-    HostConfig: {
-      Binds: [`${volumeName}:${HELPER_VOLUME_MOUNT}`],
-      SecurityOpt: ["no-new-privileges:true"],
-      // Explicit, even though this helper needs no network at all: leaving it out
-      // drops the container on Docker's default bridge, which is *not* the socket
-      // proxy's network and so happens to be safe — but "safe by accident" is not
-      // a property to rely on. EVERY container this adapter creates is pinned to
-      // the agents network; none may ever share one with docker-socket-proxy.
-      NetworkMode: config.network,
-    },
+    // Hardened like the rest, even though this helper only writes a JSON file and
+    // needs no network at all: `baseHostConfig` pins NetworkMode explicitly, because
+    // omitting it would drop the container on Docker's default bridge — which is
+    // *not* the socket proxy's network and so happens to be safe, but "safe by
+    // accident" is not a property to rely on. EVERY container this adapter creates
+    // is pinned to the agents network and carries the same limits.
+    HostConfig: baseHostConfig(config, [`${volumeName}:${HELPER_VOLUME_MOUNT}`]),
   };
 }
 
@@ -238,12 +258,8 @@ export function buildHasCredentialsCreateOptions(
     Entrypoint: [],
     Cmd: ["sh", "-c", `test -f "${HELPER_VOLUME_MOUNT}/${CREDENTIALS_MARKER}"`],
     Labels: disownCompose(),
-    HostConfig: {
-      Binds: [`${volumeName}:${HELPER_VOLUME_MOUNT}:ro`],
-      SecurityOpt: ["no-new-privileges:true"],
-      // Explicit for the same reason as the seed helper above: no container this
-      // adapter creates is left to Docker's default network choice.
-      NetworkMode: config.network,
-    },
+    // Same hardening as the seed helper above: no container this adapter creates is
+    // left to Docker's default network choice, or to no resource limits.
+    HostConfig: baseHostConfig(config, [`${volumeName}:${HELPER_VOLUME_MOUNT}:ro`]),
   };
 }

@@ -105,6 +105,31 @@ describe("loadDeploymentConfig", () => {
     expect(errors.some((m) => m.includes("PGID"))).toBe(true);
   });
 
+  it("accepts human-unit agent resource limits", () => {
+    expect(() =>
+      loadDeploymentConfig({ ...VALID, AGENT_MEMORY_LIMIT: "2g", AGENT_CPU_LIMIT: "1.5" }),
+    ).not.toThrow();
+  });
+
+  it("rejects an unparseable agent limit at startup, rather than running unbounded", () => {
+    // AGENT_MEMORY_LIMIT="2 gigs" used to Number.parseInt to NaN -> no limit at all.
+    // The preflight must catch it in `docker compose logs`, not on the first Session.
+    let errors: string[] = [];
+    try {
+      loadDeploymentConfig({ ...VALID, AGENT_MEMORY_LIMIT: "2 gigs", AGENT_CPU_LIMIT: "all" });
+    } catch (e) {
+      errors = (e as DeploymentConfigError).errors;
+    }
+    expect(errors.some((m) => m.includes("AGENT_MEMORY_LIMIT"))).toBe(true);
+    expect(errors.some((m) => m.includes("AGENT_CPU_LIMIT"))).toBe(true);
+  });
+
+  it("rejects a memory limit below Docker's own 6m minimum", () => {
+    expect(() => loadDeploymentConfig({ ...VALID, AGENT_MEMORY_LIMIT: "1m" })).toThrow(
+      /AGENT_MEMORY_LIMIT/,
+    );
+  });
+
   it("ignores the retired claude-local host paths instead of failing on them", () => {
     // A .env left over from an older deployment still carries these. They are no
     // longer part of the config, and a stale value must not brick startup.

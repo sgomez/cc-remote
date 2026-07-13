@@ -10,6 +10,8 @@ import {
   CREDENTIALS_MARKER,
 } from "./container-specs";
 
+const MB = 1024 ** 2;
+
 const config: DockerAdapterConfig = {
   host: { socketPath: "/var/run/docker.sock" },
   agentImage: "cc-remote-claude-agent",
@@ -125,8 +127,9 @@ describe("buildSessionCreateOptions — config-volume account", () => {
 
   it("applies a memory limit only when configured", () => {
     expect(opts.HostConfig?.Memory).toBeUndefined();
-    const limited = buildSessionCreateOptions(sessionSpec, { ...config, memoryLimit: 1024 });
-    expect(limited.HostConfig?.Memory).toBe(1024);
+    expect(opts.HostConfig?.MemorySwap).toBeUndefined();
+    const limited = buildSessionCreateOptions(sessionSpec, { ...config, memoryLimit: 2048 * MB });
+    expect(limited.HostConfig?.Memory).toBe(2048 * MB);
   });
 
   it("domain env overrides an infra key of the same name", () => {
@@ -204,6 +207,67 @@ describe("buildHasCredentialsCreateOptions", () => {
     const script = (opts.Cmd ?? [])[2] ?? "";
     expect(script).toContain(`test -f "/vol/${CREDENTIALS_MARKER}"`);
     expect(opts.HostConfig?.Binds).toEqual(["cc-remote-account-acc-1:/vol:ro"]);
+  });
+});
+
+describe("resource limits (S4)", () => {
+  // An agent runs untrusted, AI-generated code in --permission-mode auto. Without a
+  // memory cap, one runaway build takes the VPS down WITH web-manager — the thing
+  // you'd use to log in and kill it. Every container this adapter creates must carry
+  // the limits, not just the Session: the clone helper (huge repos) had no PidsLimit
+  // at all, and only the Session ever got Memory. All five now go through
+  // baseHostConfig, and this table is the guard against the next one forgetting.
+  const limited: DockerAdapterConfig = {
+    ...config,
+    memoryLimit: 2 * 1024 * MB,
+    nanoCpus: 1_500_000_000,
+  };
+  const cloneSpec: CloneContainerSpec = {
+    sessionName: "demo",
+    repo: "octocat/hello",
+    accountId: "acc-1",
+    workspaceVolume: "cc-remote-workspace-demo",
+    env: {},
+    labels: {},
+  };
+  const builders = [
+    ["session", buildSessionCreateOptions(sessionSpec, limited)],
+    ["clone", buildCloneCreateOptions(cloneSpec, limited)],
+    ["login", buildLoginCreateOptions(loginSpec, limited)],
+    ["seed", buildSeedCreateOptions("vol", ".claude.json", "{}", limited)],
+    ["has-credentials", buildHasCredentialsCreateOptions("vol", limited)],
+  ] as const;
+
+  it.each(builders)("%s container carries the memory limit", (_, opts) => {
+    expect(opts.HostConfig?.Memory).toBe(2 * 1024 * MB);
+  });
+
+  it.each(builders)("%s container disables swap (MemorySwap == Memory)", (_, opts) => {
+    // Unset, Docker defaults swap to 2x Memory, so a "2g" container can still touch
+    // 4g and thrash the host's disk — the cap would not be a cap.
+    expect(opts.HostConfig?.MemorySwap).toBe(opts.HostConfig?.Memory);
+  });
+
+  it.each(builders)("%s container carries the CPU quota", (_, opts) => {
+    expect(opts.HostConfig?.NanoCpus).toBe(1_500_000_000);
+  });
+
+  it.each(builders)("%s container carries the pids limit (fork-bomb ceiling)", (_, opts) => {
+    expect(opts.HostConfig?.PidsLimit).toBe(4096);
+  });
+
+  it.each(builders)("%s container carries no-new-privileges", (_, opts) => {
+    expect(opts.HostConfig?.SecurityOpt).toEqual(["no-new-privileges:true"]);
+  });
+
+  it("keeps the restart policy on the Session and off the ephemeral containers", () => {
+    expect(buildSessionCreateOptions(sessionSpec, limited).HostConfig?.RestartPolicy).toEqual({
+      Name: "unless-stopped",
+    });
+    for (const [name, opts] of builders) {
+      if (name === "session") continue;
+      expect(opts.HostConfig?.RestartPolicy, name).toBeUndefined();
+    }
   });
 });
 

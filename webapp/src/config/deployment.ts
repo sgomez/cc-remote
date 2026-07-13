@@ -15,6 +15,11 @@
 // docker/config) — those keep their own defaults; this module is the startup
 // guard and the documented source of truth for the required set.
 
+// The limit parsers live with their only consumer, the Docker adapter, and are
+// pure (no dockerode import), so the preflight can reuse them without dragging
+// infrastructure in — this module stays unit-testable with no server/Docker/DB.
+import { parseMemoryBytes, parseNanoCpus } from "../adapters/docker/config";
+
 /** Parsed, validated infra configuration for the production container. */
 export type DeploymentConfig = {
   /** Public base URL better-auth signs cookies / builds OAuth callbacks against. */
@@ -115,6 +120,22 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
     errors.push(`PUID must be a non-negative integer (got "${puid}")`);
   if (!isNonNegativeInteger(pgid))
     errors.push(`PGID must be a non-negative integer (got "${pgid}")`);
+
+  // Agent resource limits (S4). The Docker adapter owns the parse and the values
+  // (it is the only consumer); the preflight runs it so a typo like
+  // AGENT_MEMORY_LIMIT="2 gigs" is reported at container start, alongside every
+  // other config problem, instead of blowing up on the first Session create.
+  // These are the caps that keep one runaway agent from taking the host — and
+  // web-manager with it — so an unparseable value is a hard error, never a
+  // silent fall-back to "unlimited".
+  for (const name of ["AGENT_MEMORY_LIMIT", "AGENT_CPU_LIMIT"] as const) {
+    try {
+      if (name === "AGENT_MEMORY_LIMIT") parseMemoryBytes(env[name], name);
+      else parseNanoCpus(env[name], name);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   if (errors.length > 0) throw new DeploymentConfigError(errors);
 

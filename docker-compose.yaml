@@ -75,6 +75,16 @@ services:
       - DOCKER_HOST=tcp://docker-socket-proxy:2375
       - AGENT_IMAGE=cc-remote-claude-agent
       - AGENT_NETWORK=cc-remote-agents
+      # Per-container caps for EVERY container the adapter creates (Sessions, clone
+      # helpers, Login Containers, seed/probe helpers). setup.sh derives these from the
+      # host's real RAM/CPU count — web-manager cannot (INFO=0 on the socket proxy, and
+      # it stays that way) — and compiles them into .env. The fallbacks below only cover
+      # a deployment that never reran setup.sh; they are deliberately a *limit*, not
+      # "unlimited", because unbounded agents can OOM the host and kill web-manager with
+      # it. An unparseable value makes web-manager refuse to start (validate:env).
+      # Memory takes human units (2g / 512m); MemorySwap is pinned to it (no swap).
+      - AGENT_MEMORY_LIMIT=${AGENT_MEMORY_LIMIT:-2g}
+      - AGENT_CPU_LIMIT=${AGENT_CPU_LIMIT:-2}
       - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
       - PERMISSION_MODE=${PERMISSION_MODE:-auto}
       - GIT_USER_NAME=${GIT_USER_NAME}

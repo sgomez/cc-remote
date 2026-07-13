@@ -113,10 +113,33 @@ Read by `configFromEnv` (deployment infra; **not** provider/account data):
 | `AGENT_IMAGE` | `cc-remote-claude-agent` | agent image for both phases |
 | `AGENT_NETWORK` | `cc-remote-agents` | the **agents** network the siblings join (NETWORKS is disabled on the proxy, so it can't be discovered — it must be set) |
 | `PUID` / `PGID` | `1000` | host uid/gid for file ownership |
-| `AGENT_PIDS_LIMIT` | `4096` | `PidsLimit` hardening |
-| `AGENT_MEMORY_LIMIT` | — | bytes; omitted = no limit |
+| `AGENT_PIDS_LIMIT` | `4096` | `PidsLimit` — fork-bomb ceiling |
+| `AGENT_MEMORY_LIMIT` | — | `Memory` **and** `MemorySwap`. Human units (`512m`, `2g`, `1.5g`) or raw bytes; min 6m (Docker's); `0`/unset = no limit |
+| `AGENT_CPU_LIMIT` | — | `NanoCpus`, in cores (`1.5` → 1_500_000_000); `0`/unset = no limit |
 | `AGENT_RESTART_POLICY` | `unless-stopped` | restart policy |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | git identity injected into containers |
+
+### Resource limits
+
+`baseHostConfig` in `container-specs.ts` applies `Memory` + `MemorySwap` + `NanoCpus` +
+`PidsLimit` + `no-new-privileges` to **all five** builders (session, clone, login, seed,
+has-credentials). It used to be inline in each, and only the session ever got `Memory`
+while the clone helper — the one that unpacks arbitrary repos — had no `PidsLimit` at
+all. Add a limit here, not at a call site.
+
+- **`MemorySwap` is pinned equal to `Memory`.** Unset, Docker allows swap up to 2× the
+  limit, so a "2g" container can touch 4g and thrash the host's disk — the cap would not
+  be a cap. Equal values mean swap is off. On a kernel with swap accounting disabled
+  Docker only warns; the memory cap still applies.
+- **The value is derived host-side by `setup.sh`/`config.js`**, because it depends on the
+  host's RAM and web-manager cannot see it: `docker info` is blocked on the socket proxy
+  (`INFO=0`) and stays blocked. It is a **per-container** cap, not a fleet total.
+- **An unparseable value throws** (`AgentLimitError`) from `configFromEnv`, and the same
+  parse runs in the `validate:env` preflight, so the container refuses to start. Falling
+  back to "no limit" on a typo is the exact failure this config prevents. `parseInt("2g")`
+  is `2` — a two-*byte* limit — which is why the format is parsed, not `parseInt`ed.
+- An OOM-killed Session surfaces honestly: `inspect` reads `State.OOMKilled` → `dead` →
+  the red `error` ("crashed") badge in the UI.
 
 ## Integration test (local, not CI)
 

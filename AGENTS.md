@@ -112,11 +112,22 @@ They are scoped to `/home/node/.local` (the `claude` symlink root creates) plus 
 
 ### Auto Mode
 
-Agent containers default to `claude --permission-mode auto`, which relies on Claude's background safety classifier rather than interactive prompts (there's no TTY approval loop available remotely). Container-level isolation (mounts limited to the session's own workspace + account config volumes, `no-new-privileges`, `PidsLimit`) is what makes running unattended in that mode acceptable — see README "Auto Mode & Container Sandboxing" for the full rationale before changing defaults here.
+Agent containers default to `claude --permission-mode auto`, which relies on Claude's background safety classifier rather than interactive prompts (there's no TTY approval loop available remotely). Container-level isolation (mounts limited to the session's own workspace + account config volumes, `no-new-privileges`, the two-network split, and the resource limits below) is what makes running unattended in that mode acceptable — see README "Auto Mode & Container Sandboxing" for the full rationale before changing defaults here.
+
+### Resource limits are hardening, and they live in ONE place
+
+`baseHostConfig` (`container-specs.ts`) applies `Memory` + `MemorySwap` + `NanoCpus` + `PidsLimit` + `no-new-privileges` + `NetworkMode` to **all five** builders (session, clone, login, seed, has-credentials). It is one function on purpose: these used to be five inline `HostConfig` literals, and the drift was exactly what you'd predict — only the Session ever got `Memory`, and the clone helper, which unpacks arbitrary repos, had **no `PidsLimit` at all**. Add a limit there, never at a call site. Unit tests assert the full table.
+
+- `MemorySwap` is pinned **equal** to `Memory`: unset, Docker allows 2× the limit in swap, so the cap would not be a cap. `NanoCpus` is applied even to the trivial helpers — "only where it matters" is the reasoning that lost the `PidsLimit`.
+- The **value** is derived host-side by `setup.sh`/`config.js` (per-container, ~half of RAM-minus-1GiB, clamped to `[512m, 8g]`; CPU = half the cores). web-manager **cannot** discover host RAM: `docker info` is blocked on the socket proxy (`INFO=0`) and that stays blocked. Override via `config.json` → `resources`, never `.env` (which is recompiled from it).
+- `AGENT_MEMORY_LIMIT` / `AGENT_CPU_LIMIT` accept human units (`2g`, `512m`, `1.5g`). Parsing them is not optional: the old code `parseInt`-ed the value, so `2g` silently became a **2-byte** limit. An unparseable value now throws (`AgentLimitError`) from `configFromEnv` *and* from the `validate:env` preflight — fail loud, never fall back to unlimited.
+- An OOM-killed Session surfaces honestly: `inspect` reads `State.OOMKilled` → `dead` → the red `error` ("crashed") badge. `listContainers` cannot see that flag (documented in the code); only the inspect path can.
 
 ### Config generation flow
 
-`setup.sh` → `config.js` (interactive prompts) → `config.json` (source of truth, gitignored) → compiled `.env` (gitignored, consumed by `docker-compose.yaml`). Don't hand-edit `.env` expecting it to persist across `./setup.sh` reruns; edit `config.json` or answer the prompts instead. `config.js`'s `resolvePath` resolves `~` against `HOST_HOME` and relative paths against `HOST_PWD`, both injected by `setup.sh` since `config.js` itself runs inside a throwaway container that doesn't see the real host filesystem layout.
+`setup.sh` → `config.js` (interactive prompts) → `config.json` (source of truth, gitignored) → compiled `.env` (gitignored, consumed by `docker-compose.yaml`). Don't hand-edit `.env` expecting it to persist across `./setup.sh` reruns; edit `config.json` or answer the prompts instead.
+
+**Host facts are injected as env, because `config.js` cannot see the host**: it runs inside a throwaway `node:22-slim` container (so the wizard needs no Node on the host), which sees neither the host's filesystem layout nor its CPU count. `setup.sh` reads them and passes them in — `HOST_UID`/`HOST_GID` (→ `PUID`/`PGID`) and `HOST_MEM_MB`/`HOST_CPUS` (→ the derived `AGENT_MEMORY_LIMIT`/`AGENT_CPU_LIMIT`). Anything else the wizard must know about the machine goes the same way. This is the *only* place the host's RAM is visible: web-manager can't ask Docker for it (`INFO=0` on the socket proxy).
 
 ## Custom agent skills (`.agents/`)
 

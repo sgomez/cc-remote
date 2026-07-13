@@ -225,6 +225,40 @@ The deployment therefore runs **two** Docker networks:
 
 `web-manager` is multi-homed and is the **only** bridge between the two: it drives the Docker API over the control network and dials each Session's web terminal (`<container>:7681`) over the agents network. From an agent container the proxy does not resolve by name, and a connection to its control-network IP is dropped by the bridge. This — together with the mount policy above, `no-new-privileges` and `PidsLimit` — is what makes Auto Mode acceptable.
 
+### Resource limits (memory, CPU, PIDs)
+
+Isolation stops an agent from reaching *out*. It does nothing about an agent eating the box it sits on: an unbounded container that allocates until the kernel gives up takes down every other Session **and `web-manager` itself** — the thing you would open on your phone to stop it. AI-generated code in Auto Mode gets to run `make -j`, install dependencies and write loops, so this is an availability problem, not a hypothetical one.
+
+Every container the manager creates — Sessions, clone helpers, Login Containers, and the short-lived volume helpers — therefore carries:
+
+| Limit | Env var | What it stops |
+|---|---|---|
+| `Memory` + `MemorySwap` | `AGENT_MEMORY_LIMIT` | one runaway agent OOM-ing the host |
+| `NanoCpus` | `AGENT_CPU_LIMIT` | a runaway build starving `web-manager` of CPU |
+| `PidsLimit` | `AGENT_PIDS_LIMIT` | fork bombs |
+
+`MemorySwap` is pinned **equal** to `Memory`, which is Docker's way of saying "no swap". Left unset, Docker allows swap up to 2× the limit, so a 2 GiB container could still touch 4 GiB and thrash the host's disk — the cap would look real without being one. (If your kernel has swap accounting disabled, Docker prints a warning at container start; the memory cap still applies.)
+
+**Where the value comes from.** There is no universal default — it depends on your VPS. `./setup.sh` reads the host's real RAM and core count and **derives** the caps for you (no prompt, like the auth secret and PUID/PGID):
+
+```
+memory = (total RAM − 1 GiB reserved for the host, web-manager, Caddy and the socket proxy) / 2
+         clamped to [512m, 8g]
+cpus   = half the host's cores, minimum 1
+```
+
+The assumption being encoded, so you can disagree with it: **about two Sessions are memory-hot at once**. This is a **per-container** cap, not a fleet total — it limits the blast radius of *one* bad agent; it is not an admission controller, and enough simultaneous heavy Sessions can still overcommit the host. A 2 GiB VPS lands on the 512 MiB floor, which is about the least Claude Code is usable in; below that, don't bother.
+
+**How to change it.** Edit the `resources` block in `config.json` and rerun `./setup.sh`:
+
+```json
+"resources": { "agentMemoryLimit": "2g", "agentCpuLimit": 2 }
+```
+
+Do **not** edit `.env` — it is *compiled* from `config.json` on every `./setup.sh` run and your edit will be overwritten. Memory accepts human units (`512m`, `2g`, `1.5g`) or raw bytes; the minimum is Docker's own 6 MiB. An invalid value is rejected by the wizard, and `web-manager` refuses to start on one rather than silently running every agent unbounded. Setting `0` disables a limit — you are then back to the failure mode this section exists to prevent.
+
+A Session the kernel OOM-kills is reported honestly: it shows up as a red **crashed** badge in the UI, not as a mysterious stop.
+
 Two deliberate non-goals, stated plainly:
 
 - **No `enable_icc=false` on the agents network.** It looks like the obvious extra hardening, but on an ICC-disabled bridge Docker drops *all* container-to-container traffic (DNS still resolves; connections just hang), and there is no way to exempt one container. It would break `web-manager` → ttyd, i.e. the web terminal, while adding nothing the network split does not already provide.
