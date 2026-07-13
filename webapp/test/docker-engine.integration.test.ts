@@ -316,22 +316,27 @@ suite("DockerContainerEngine.followSessionLogs (real daemon)", () => {
     await startChattyContainer(FOLLOW_SESSION);
 
     const chunks: { text: string; at: number }[] = [];
+    let source: string | null = null;
     const started = Date.now();
     const follow = await makeFollowSessionLogs({ engine })(
       { name: FOLLOW_SESSION },
       {
+        onOpen: (s) => {
+          source = s;
+        },
         onChunk: (text) => chunks.push({ text, at: Date.now() - started }),
         onError: () => {},
         onEnd: () => {},
       },
     );
 
-    expect(follow.source).toBe("session");
+    // The source is announced before a single byte can arrive.
+    expect(source).toBe("session");
 
     // Wait for output to accumulate over time — the point is that we are not
     // blocked until the container exits (it never does).
     await new Promise((r) => setTimeout(r, 3500));
-    follow.follow.close();
+    follow.close();
 
     const text = chunks.map((c) => c.text).join("");
     expect(text).toContain("tick 1");
@@ -379,7 +384,12 @@ suite("DockerContainerEngine.followSessionLogs (real daemon)", () => {
     const ended = new Promise<void>((resolve) => {
       makeFollowSessionLogs({ engine })(
         { name },
-        { onChunk: (t) => chunks.push(t), onError: () => {}, onEnd: () => resolve() },
+        {
+          onOpen: () => {},
+          onChunk: (t) => chunks.push(t),
+          onError: () => {},
+          onEnd: () => resolve(),
+        },
       );
     });
 
