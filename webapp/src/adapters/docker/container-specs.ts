@@ -70,7 +70,12 @@ function disownCompose(labels: Record<string, string> = {}): Record<string, stri
   };
 }
 
-/** Shared hardening flags carried over from the legacy Express web-manager. */
+/**
+ * Shared hardening flags carried over from the legacy Express web-manager.
+ * `NetworkMode` is part of the hardening: `config.network` is the AGENTS network,
+ * which docker-socket-proxy is NOT on, so nothing running in an agent container
+ * can reach the Docker API.
+ */
 function baseHostConfig(config: DockerAdapterConfig, binds: string[]): Docker.HostConfig {
   const hostConfig: Docker.HostConfig = {
     Binds: binds,
@@ -210,6 +215,12 @@ export function buildSeedCreateOptions(
     HostConfig: {
       Binds: [`${volumeName}:${HELPER_VOLUME_MOUNT}`],
       SecurityOpt: ["no-new-privileges:true"],
+      // Explicit, even though this helper needs no network at all: leaving it out
+      // drops the container on Docker's default bridge, which is *not* the socket
+      // proxy's network and so happens to be safe — but "safe by accident" is not
+      // a property to rely on. EVERY container this adapter creates is pinned to
+      // the agents network; none may ever share one with docker-socket-proxy.
+      NetworkMode: config.network,
     },
   };
 }
@@ -230,6 +241,9 @@ export function buildHasCredentialsCreateOptions(
     HostConfig: {
       Binds: [`${volumeName}:${HELPER_VOLUME_MOUNT}:ro`],
       SecurityOpt: ["no-new-privileges:true"],
+      // Explicit for the same reason as the seed helper above: no container this
+      // adapter creates is left to Docker's default network choice.
+      NetworkMode: config.network,
     },
   };
 }

@@ -21,6 +21,28 @@ The domain owns every decision (seeding JSON, status synthesis, which volume to
 mount); this adapter only reports raw facts (containers, labels, exit codes) and
 executes specs the use cases build.
 
+## Network isolation (the trust boundary)
+
+The deployment runs **two** networks (see `docker-compose.yaml`):
+
+- `cc-remote-control` — `docker-socket-proxy` + `web-manager` + `caddy`.
+- `cc-remote-agents` — `web-manager` + **every container this adapter creates**.
+
+web-manager is multi-homed and is the only bridge. The proxy exposes
+`POST /containers/create` and does **not** vet request bodies, so a container that
+could reach `docker-socket-proxy:2375` could create one with `Binds: ["/:/host"]`
+(host root) and read every other container's env — `GITHUB_TOKEN`, `ANTHROPIC_*` —
+via `GET /containers/*/json`. Agent containers run untrusted, AI-generated code in
+`--permission-mode auto`, so keeping them off the proxy's network is what makes
+that acceptable.
+
+Consequence for this adapter: **every** builder in `container-specs.ts` — session,
+clone helper, login container, seed helper, credential-probe helper — sets
+`NetworkMode: config.network` (the agents net). Omitting it on the short-lived
+helpers would drop them on Docker's default bridge: not the proxy's network, so
+safe, but safe by accident. A unit test asserts all five. Never set
+`config.network` to the control network.
+
 ## Volume mount strategy (the open design choice from #13)
 
 An **Account Config Volume** `cc-remote-account-<id>` holds *both* the account's
@@ -89,7 +111,7 @@ Read by `configFromEnv` (deployment infra; **not** provider/account data):
 |-----|---------|---------|
 | `DOCKER_HOST` | raw socket | `tcp://host:port` of the socket proxy |
 | `AGENT_IMAGE` | `cc-remote-claude-agent` | agent image for both phases |
-| `AGENT_NETWORK` | `cc-remote_default` | compose network the siblings join (NETWORKS is disabled on the proxy, so it can't be discovered — it must be set) |
+| `AGENT_NETWORK` | `cc-remote-agents` | the **agents** network the siblings join (NETWORKS is disabled on the proxy, so it can't be discovered — it must be set) |
 | `PUID` / `PGID` | `1000` | host uid/gid for file ownership |
 | `AGENT_PIDS_LIMIT` | `4096` | `PidsLimit` hardening |
 | `AGENT_MEMORY_LIMIT` | — | bytes; omitted = no limit |
@@ -109,7 +131,7 @@ RUN_DOCKER_IT=1 AGENT_NETWORK=bridge pnpm test:docker
 ```
 
 `AGENT_NETWORK=bridge` targets a plain local daemon; in the compose deployment
-use the real network name. The suite seeds a volume and verifies the JSON,
+it is `cc-remote-agents` (never the control network). The suite seeds a volume and verifies the JSON,
 exercises credential detection, and runs the full create → list → stop → start →
 destroy lifecycle with label/mount assertions, cleaning up all `it-*` resources.
 

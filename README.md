@@ -94,6 +94,18 @@ When a new version is released, you can overwrite the previous one while preserv
   docker compose up -d --build
   ```
 
+##### One-time step when upgrading across the network split
+
+The stack used to put `web-manager`, the `docker-socket-proxy` and every agent container on a single `cc-remote` network. It now uses two (`cc-remote-control` and `cc-remote-agents` — see [Network isolation](#network-isolation-two-networks-one-trust-boundary)). New Sessions land on `cc-remote-agents` automatically; **Sessions you created before the upgrade are still on the old network**, so `web-manager` can no longer reach their web terminal.
+
+Attach each pre-existing Session to the new agents network once — this is safe and preserves the workspace:
+
+```bash
+docker network connect cc-remote-agents cc-remote-session-<session_name>
+```
+
+Do **not** use *Reset* or *Destroy* for this: both delete the Session's workspace volume. (If you would rather start clean, destroying and recreating the Session also works — but only if you do not need what is in its workspace.)
+
 ---
 
 ### 2. Configure and Prepare
@@ -164,7 +176,7 @@ Accounts and login sessions are stored in **SQLite** on the persisted `cc-remote
 
 To avoid heavy nesting, performance hits, and security vulnerabilities associated with Docker-in-Docker (DinD), this project uses a **Sibling Containers** architecture:
 - The `web-manager` container never mounts the raw Docker socket. It talks to the host daemon through the read-only `docker-socket-proxy` over TCP (`tcp://docker-socket-proxy:2375`), and therefore runs unprivileged.
-- When you create a Session, the web manager calls the Docker API to create and start a sibling container running the `cc-remote-claude-agent` image, joined to the same `cc-remote` network so the terminal WebSocket proxy can reach it.
+- When you create a Session, the web manager calls the Docker API to create and start a sibling container running the `cc-remote-claude-agent` image, joined to the **`cc-remote-agents`** network so the terminal WebSocket proxy can reach it. The `docker-socket-proxy` is **not** on that network — it lives on `cc-remote-control` with `web-manager` and Caddy, so no agent container can reach the Docker API (see [Network isolation](#network-isolation-two-networks-one-trust-boundary)).
 - Claude credentials always come from the Session's **Account Config Volume** (API-key seeding or an OAuth login). **No agent container ever bind-mounts a host path** — the only mounts are that Account's config volume and the Session's own workspace volume.
 
 ### Session Workspace Lifecycle
@@ -199,6 +211,24 @@ Auto Mode replaces routine permission prompts with a background safety classifie
 
 ### Security & Isolation (The Sandbox)
 Because the Claude Code agent runs entirely inside an isolated Docker container, the container acts as a secure sandbox. It mounts **no host path at all** — only its own two named volumes (the Session's workspace and its Account's config) — so filesystem changes, commands, and tool executions cannot reach the host VPS's files or configuration. This sandboxed architecture is what makes running in Auto Mode acceptable.
+
+### Network isolation (two networks, one trust boundary)
+
+Filesystem isolation is not enough on its own: an agent that could open a TCP connection to the `docker-socket-proxy` would escape the sandbox entirely. The proxy exposes `POST /containers/create` and **does not inspect request bodies**, so a single `curl` could create a container with `Binds: ["/:/host"]` — root on the host — and `GET /containers/*/json` would hand over every other container's environment, including your `GITHUB_TOKEN` and any `ANTHROPIC_*` keys. Agent containers run untrusted, AI-generated code, so a malicious npm dependency or a prompt injection in something the agent reads is enough to try it.
+
+The deployment therefore runs **two** Docker networks:
+
+| Network | Members |
+|---|---|
+| `cc-remote-control` | `docker-socket-proxy`, `web-manager`, `caddy` |
+| `cc-remote-agents` | `web-manager`, every agent container (Sessions, clone helpers, Login Containers, seed helpers) |
+
+`web-manager` is multi-homed and is the **only** bridge between the two: it drives the Docker API over the control network and dials each Session's web terminal (`<container>:7681`) over the agents network. From an agent container the proxy does not resolve by name, and a connection to its control-network IP is dropped by the bridge. This — together with the mount policy above, `no-new-privileges` and `PidsLimit` — is what makes Auto Mode acceptable.
+
+Two deliberate non-goals, stated plainly:
+
+- **No `enable_icc=false` on the agents network.** It looks like the obvious extra hardening, but on an ICC-disabled bridge Docker drops *all* container-to-container traffic (DNS still resolves; connections just hang), and there is no way to exempt one container. It would break `web-manager` → ttyd, i.e. the web terminal, while adding nothing the network split does not already provide.
+- **Agent ↔ agent traffic is still possible.** Sessions share the agents network, so one Session can reach another Session's ttyd (an unauthenticated shell) on port 7681. That is accepted for a single-user deployment: every Session belongs to the same operator. Closing it would need a network per Session (or `DOCKER-USER` iptables rules) and is not implemented.
 
 ### Customizing Auto Mode Rules
 You can customize the classifier's behavior (e.g. telling it which repositories, buckets, or domains are trusted to avoid false-positive blocks on routine tasks) by defining an `autoMode` settings block in your user configuration.

@@ -12,6 +12,10 @@ services:
     build: .
     deploy:
       replicas: 0
+    # Never started by compose, but pinned to the agents net so nothing can ever
+    # accidentally start it on the control net (where the socket proxy lives).
+    networks:
+      - cc-remote-agents
 
   docker-socket-proxy:
     # TODO: pin to a specific digest for reproducibility once vetted (tag pinned to v0.4.2 for now)
@@ -31,8 +35,11 @@ services:
       - INFO=0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # No ports are published to the host; only reachable from other services on the
-    # compose network (e.g. web-manager via DOCKER_HOST=tcp://docker-socket-proxy:2375).
+    # No ports are published to the host, and it sits on the CONTROL network only:
+    # web-manager can reach it (DOCKER_HOST=tcp://docker-socket-proxy:2375), agent
+    # containers cannot. That is the whole trust boundary — see `networks:` below.
+    networks:
+      - cc-remote-control
 
   # web-manager: the TanStack Start + Nitro app (webapp/). ONE service, ONE
   # Caddy upstream — it serves static + SSR + API + SSE + WS on port 4000, so
@@ -62,11 +69,12 @@ services:
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       - ALLOWED_GITHUB_USERS=${ALLOWED_GITHUB_USERS}
-      # Docker adapter: reach the daemon via the proxy; created sibling agent
-      # containers join THIS compose network so the WS proxy can dial them by name.
+      # Docker adapter: reach the daemon via the proxy over the CONTROL net;
+      # created sibling agent containers join the AGENTS net, which web-manager is
+      # also on, so the WS proxy can dial their ttyd by name (<name>:7681).
       - DOCKER_HOST=tcp://docker-socket-proxy:2375
       - AGENT_IMAGE=cc-remote-claude-agent
-      - AGENT_NETWORK=cc-remote
+      - AGENT_NETWORK=cc-remote-agents
       - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
       - PERMISSION_MODE=${PERMISSION_MODE:-auto}
       - GIT_USER_NAME=${GIT_USER_NAME}
@@ -80,6 +88,11 @@ services:
       - DEBUG=${DEBUG:-}
     volumes:
       - cc-remote-db:/data
+    # Multi-homed on purpose: control (to talk to the socket proxy) + agents (to
+    # dial each Session's ttyd). It is the ONLY thing bridging the two.
+    networks:
+      - cc-remote-control
+      - cc-remote-agents
 
   caddy:
     image: caddy:2
@@ -97,12 +110,42 @@ services:
       - caddy_config:/config
     depends_on:
       - web-manager
+    networks:
+      - cc-remote-control
 
-# Deterministic network name (independent of the compose project/dir name) so
-# the Docker adapter can attach created agent containers to it via AGENT_NETWORK.
+# TWO networks, and the split IS the security boundary.
+#
+# docker-socket-proxy exposes POST /containers/create and does NOT inspect request
+# bodies, so anything that can open a TCP connection to it can create a container
+# with Binds: ["/:/host"] — i.e. root on the host — and can read every other
+# container's env (GITHUB_TOKEN, ANTHROPIC_*) via GET /containers/*/json. Agent
+# containers run untrusted, AI-generated code under `--permission-mode auto`, so a
+# malicious dependency or a prompt injection would be one `curl` away from that.
+# They therefore must not share a network with the proxy.
+#
+#   cc-remote-control  docker-socket-proxy + web-manager + caddy
+#   cc-remote-agents   web-manager + every agent container (Sessions, clone helpers,
+#                      login containers, seed/probe helpers)
+#
+# web-manager is multi-homed and is the only bridge between them: it reaches the
+# proxy over control and each agent's ttyd over agents. From the agents net the
+# proxy neither resolves by name nor answers on its control-net IP.
+#
+# Names are set explicitly so they are deterministic (independent of the compose
+# project/dir name) — the Docker adapter attaches created sibling agent containers
+# by name via AGENT_NETWORK.
+#
+# Deliberately NO `com.docker.network.bridge.enable_icc=false` on the agents net:
+# on an ICC-off bridge Docker drops ALL container-to-container traffic (DNS still
+# resolves, connects hang/reset), which would kill web-manager -> ttyd as well, and
+# there is no way to exempt one container on that bridge. It would break the web
+# terminal without adding anything the split does not already give. Agent<->agent
+# traffic on the agents net therefore remains possible (see README, S2).
 networks:
-  default:
-    name: cc-remote
+  cc-remote-control:
+    name: cc-remote-control
+  cc-remote-agents:
+    name: cc-remote-agents
 
 volumes:
   caddy_data:

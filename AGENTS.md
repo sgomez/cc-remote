@@ -46,7 +46,22 @@ The `claude-agent` compose service exists **only to build the agent image** (`de
 
 ### Sibling containers, not Docker-in-Docker
 
-`web-manager` never runs Docker-in-Docker. It talks to the host's Docker daemon through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, read-only bind of `/var/run/docker.sock`, only `CONTAINERS`/`VOLUMES`/`POST`/`EXEC` enabled — `EXEC` because the workspace git probe starts an exec, and `/exec/{id}/start` is not a `/containers` route) reachable at `tcp://docker-socket-proxy:2375` on the compose network only — no ports are published to the host. The Docker adapter (`webapp/src/adapters/docker/`, `dockerode`) works against that proxy to create/start/stop/remove **sibling** `claude-agent` containers and their volumes. This keeps the web-manager container from needing the raw socket mounted directly, so it runs unprivileged.
+`web-manager` never runs Docker-in-Docker. It talks to the host's Docker daemon through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, read-only bind of `/var/run/docker.sock`, only `CONTAINERS`/`VOLUMES`/`POST`/`EXEC` enabled — `EXEC` because the workspace git probe starts an exec, and `/exec/{id}/start` is not a `/containers` route) reachable at `tcp://docker-socket-proxy:2375` on the **control** network only — no ports are published to the host. The Docker adapter (`webapp/src/adapters/docker/`, `dockerode`) works against that proxy to create/start/stop/remove **sibling** `claude-agent` containers and their volumes. This keeps the web-manager container from needing the raw socket mounted directly, so it runs unprivileged.
+
+### Two networks — the trust boundary
+
+The compose stack declares **two** networks and `web-manager` is multi-homed across both; it is the only bridge:
+
+- **`cc-remote-control`** — `docker-socket-proxy` + `web-manager` + `caddy`.
+- **`cc-remote-agents`** — `web-manager` + **every** container the Docker adapter creates (Sessions, clone helpers, Login Containers, the seed/credential-probe helpers). This is what `AGENT_NETWORK` points at, and what `configFromEnv` defaults to.
+
+Why: the socket proxy accepts `POST /containers/create` and does **not** vet request bodies, so a container that can reach `:2375` can create one with `Binds: ["/:/host"]` (host root) and can read every other container's env (`GITHUB_TOKEN`, `ANTHROPIC_*`) via `GET /containers/*/json`. Agent containers run untrusted, AI-generated code in `--permission-mode auto`, so they must never share a network with the proxy. Verified against this daemon: from the agents net the proxy neither resolves by name nor answers on its control-net IP, while multi-homed web-manager reaches both sides.
+
+Do **not** add `com.docker.network.bridge.enable_icc=false` to the agents net: on an ICC-off bridge Docker drops *all* container-to-container traffic (DNS still resolves), which kills `web-manager` → ttyd too, and there is no per-container exemption — it would break the web terminal without adding anything the split does not already give. Consequence, accepted deliberately for a single-user deployment: Sessions can still reach each other's ttyd on the agents net. Closing that needs a network per Session or `DOCKER-USER` rules.
+
+Every builder in `container-specs.ts` sets `NetworkMode: config.network` — including the short-lived helpers, which need no network at all (omitting it would drop them on Docker's default bridge: safe, but safe by accident). A unit test asserts all five.
+
+Upgrading a live deployment: Sessions created before the split are still on the old `cc-remote` network and web-manager can no longer reach their terminal. The migration is `docker network connect cc-remote-agents cc-remote-session-<name>` — **never** `reset`/`destroy`, which delete the workspace volume.
 
 ### webapp/ layout (ports and adapters)
 

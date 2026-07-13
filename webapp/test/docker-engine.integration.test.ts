@@ -9,8 +9,9 @@
 //     in prod it is tcp://docker-socket-proxy:2375);
 //   - the agent image built and tagged (AGENT_IMAGE, default
 //     `cc-remote-claude-agent`);
-//   - AGENT_NETWORK set to a network that exists on the daemon (default
-//     `cc-remote_default`; use `bridge` for a plain local daemon).
+//   - AGENT_NETWORK set to a network that exists on the daemon (in the compose
+//     deployment the agents net, `cc-remote-agents`; use `bridge` for a plain
+//     local daemon — never the control net the socket proxy is on).
 //
 // The clone phase reaches github.com over the network; skip-friendly if offline.
 

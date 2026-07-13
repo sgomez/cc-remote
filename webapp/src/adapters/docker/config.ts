@@ -28,7 +28,12 @@ export type DockerAdapterConfig = {
   host: DockerHost;
   /** Agent image both phases run (`cc-remote-claude-agent` by default). */
   agentImage: string;
-  /** Compose network the sibling containers join so the WS proxy can reach them. */
+  /**
+   * The AGENTS network (`cc-remote-agents`) every sibling container joins — the
+   * one web-manager shares with them so the WS proxy can reach their ttyd. It is
+   * NOT the control network the docker-socket-proxy lives on: no container this
+   * adapter creates may ever be able to reach the proxy.
+   */
   network: string;
   puid: string;
   pgid: string;
@@ -55,9 +60,13 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): DockerAdapt
   return {
     host: parseDockerHost(env.DOCKER_HOST),
     agentImage: env.AGENT_IMAGE || "cc-remote-claude-agent",
-    // NETWORKS is disabled on the socket proxy, so the network cannot be
-    // discovered at runtime (legacy inspected it) — it must be configured.
-    network: env.AGENT_NETWORK || "cc-remote_default",
+    // The AGENTS network — never the control network the socket proxy sits on.
+    // NETWORKS is disabled on the socket proxy, so it cannot be discovered at
+    // runtime (legacy inspected it); it must be configured, and the default must
+    // fail safe: an agent container that landed on the proxy's network could
+    // POST /containers/create with `Binds: ["/:/host"]` (the proxy does not vet
+    // request bodies) and own the host. See docker-compose.yaml's `networks:`.
+    network: env.AGENT_NETWORK || "cc-remote-agents",
     puid: env.PUID || "1000",
     pgid: env.PGID || "1000",
     pidsLimit: Number.isInteger(pids) && pids > 0 ? pids : 4096,

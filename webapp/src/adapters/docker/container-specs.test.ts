@@ -13,7 +13,7 @@ import {
 const config: DockerAdapterConfig = {
   host: { socketPath: "/var/run/docker.sock" },
   agentImage: "cc-remote-claude-agent",
-  network: "cc-remote_default",
+  network: "cc-remote-agents",
   puid: "1000",
   pgid: "1000",
   pidsLimit: 4096,
@@ -72,7 +72,7 @@ describe("buildLoginCreateOptions", () => {
   it("carries hardening + network but no restart policy (ephemeral)", () => {
     expect(opts.HostConfig?.SecurityOpt).toEqual(["no-new-privileges:true"]);
     expect(opts.HostConfig?.PidsLimit).toBe(4096);
-    expect(opts.HostConfig?.NetworkMode).toBe("cc-remote_default");
+    expect(opts.HostConfig?.NetworkMode).toBe("cc-remote-agents");
     expect(opts.HostConfig?.RestartPolicy).toBeUndefined();
   });
 
@@ -116,7 +116,7 @@ describe("buildSessionCreateOptions — config-volume account", () => {
     expect(opts.HostConfig?.SecurityOpt).toEqual(["no-new-privileges:true"]);
     expect(opts.HostConfig?.PidsLimit).toBe(4096);
     expect(opts.HostConfig?.RestartPolicy).toEqual({ Name: "unless-stopped" });
-    expect(opts.HostConfig?.NetworkMode).toBe("cc-remote_default");
+    expect(opts.HostConfig?.NetworkMode).toBe("cc-remote-agents");
   });
 
   it("passes the domain labels through", () => {
@@ -204,6 +204,34 @@ describe("buildHasCredentialsCreateOptions", () => {
     const script = (opts.Cmd ?? [])[2] ?? "";
     expect(script).toContain(`test -f "/vol/${CREDENTIALS_MARKER}"`);
     expect(opts.HostConfig?.Binds).toEqual(["cc-remote-account-acc-1:/vol:ro"]);
+  });
+});
+
+describe("network isolation", () => {
+  // The docker-socket-proxy accepts POST /containers/create and does not vet
+  // request bodies, so any container that can reach it can bind-mount / and take
+  // the host. EVERY container this adapter creates must therefore be pinned to
+  // the agents network (which the proxy is not on) — including the short-lived
+  // helpers, which need no network at all: omitting NetworkMode would silently
+  // drop them on Docker's default bridge, safe only by accident.
+  const cloneSpec: CloneContainerSpec = {
+    sessionName: "demo",
+    repo: "octocat/hello",
+    accountId: "acc-1",
+    workspaceVolume: "cc-remote-workspace-demo",
+    env: {},
+    labels: {},
+  };
+  const builders = [
+    ["session", buildSessionCreateOptions(sessionSpec, config)],
+    ["clone", buildCloneCreateOptions(cloneSpec, config)],
+    ["login", buildLoginCreateOptions(loginSpec, config)],
+    ["seed", buildSeedCreateOptions("vol", ".claude.json", "{}", config)],
+    ["has-credentials", buildHasCredentialsCreateOptions("vol", config)],
+  ] as const;
+
+  it.each(builders)("%s container is pinned to the configured agents network", (_, opts) => {
+    expect(opts.HostConfig?.NetworkMode).toBe("cc-remote-agents");
   });
 });
 
