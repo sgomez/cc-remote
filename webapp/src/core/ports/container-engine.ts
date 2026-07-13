@@ -42,6 +42,17 @@ export type LoginContainerSpec = {
   labels: Record<string, string>;
 };
 
+/** Where a live log follow delivers its output. */
+export type LogSink = {
+  onChunk(text: string): void;
+  onError(error: Error): void;
+  /** The container's stream ended (it exited, or Docker closed the follow). */
+  onEnd(): void;
+};
+
+/** Handle on a live follow. `close()` is idempotent and stops the stream. */
+export type LogFollow = { close(): void };
+
 export interface ContainerEngine {
   /** All session-labelled containers (main + clone helpers). */
   listSessionContainers(): Promise<SessionContainer[]>;
@@ -79,6 +90,23 @@ export interface ContainerEngine {
    * framing, the core never sees a byte of it.
    */
   readSessionLogs(sessionName: string, options: { tail: number }): Promise<string>;
+
+  /**
+   * Follow a session's container output live: replay the last `tail` lines, then
+   * push new output to `sink` as the container produces it. Same main-else-clone
+   * resolution and label guard as `readSessionLogs` — watching a clone helper
+   * fail in real time is a first-class case.
+   *
+   * The returned handle MUST tear the underlying stream down on `close()`: one
+   * leaked follow per modal open is a real resource bug on a long-running server.
+   * Text reaching the sink is already free of Docker's stream framing; ANSI
+   * sanitizing is the core's job, so chunks may still contain escapes.
+   */
+  followSessionLogs(
+    sessionName: string,
+    options: { tail: number },
+    sink: LogSink,
+  ): Promise<LogFollow>;
 
   /** Create and start the Login Container for an Account (#14). */
   runLoginContainer(spec: LoginContainerSpec): Promise<void>;

@@ -28,7 +28,11 @@ const ANSI_ESCAPES = new RegExp(
   [
     "\\u001b\\[[0-9;?]*[ -/]*[@-~]", // CSI (colour, cursor, erase…)
     "\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)", // OSC (window title), BEL- or ST-terminated
-    "\\u001b[@-Z\\\\-_]", // lone two-character escapes
+    // Lone two-character escapes: ESC + 0x40..0x5F, but NOT `[` or `]` — those
+    // introduce CSI/OSC and are matched (or, mid-stream, held) by the
+    // alternatives above. Spelling the class out avoids `\\-_` being read as a
+    // RANGE (backslash..underscore), which silently swallowed `]`.
+    "\\u001b[@A-Z\\\\^_]",
   ].join("|"),
   "g",
 );
@@ -42,4 +46,64 @@ const ANSI_ESCAPES = new RegExp(
  */
 export function sanitizeLogText(raw: string): string {
   return raw.replace(ANSI_ESCAPES, "").replace(/\r\n/g, "\n");
+}
+
+/** A complete escape sequence anchored at the start of the string. */
+const ANCHORED_ESCAPE = new RegExp(`^(?:${ANSI_ESCAPES.source})`);
+
+/**
+ * How much unterminated escape we are willing to hold back. A real sequence is
+ * a handful of bytes; anything longer is a lone ESC in the container's output
+ * that will never be completed, and holding it forever would silently swallow
+ * the log lines behind it.
+ */
+const MAX_HELD = 64;
+
+/**
+ * Split `text` into what is safe to emit now and what must wait for more bytes.
+ * A follow stream cuts the output at arbitrary byte offsets, so a chunk can end
+ * mid-escape (`[3` … `2m`) or between the halves of a CRLF — emitting
+ * either half immediately is what would leak `[32m` junk into the panel.
+ */
+function splitTrailingPartial(text: string): { ready: string; held: string } {
+  let cut = text.length;
+
+  const lastEsc = text.lastIndexOf("\u001b");
+  if (lastEsc !== -1 && !ANCHORED_ESCAPE.test(text.slice(lastEsc))) {
+    // An ESC that hasn't terminated yet — unless it's so long it never will.
+    if (text.length - lastEsc <= MAX_HELD) cut = lastEsc;
+  }
+  // A trailing CR may be the first half of a CRLF still in flight.
+  if (cut === text.length && text.endsWith("\r")) cut = text.length - 1;
+
+  return { ready: text.slice(0, cut), held: text.slice(cut) };
+}
+
+export type LogSanitizer = {
+  /** Sanitize a chunk, holding back any trailing partial sequence. */
+  push(chunk: string): string;
+  /** Emit whatever was held back (the stream ended; it will never complete). */
+  flush(): string;
+};
+
+/**
+ * The streaming counterpart of `sanitizeLogText`. Same output for the same total
+ * input, no matter where the chunk boundaries fall — which a one-shot read never
+ * had to care about, but a live follow does.
+ */
+export function createLogSanitizer(): LogSanitizer {
+  let held = "";
+
+  return {
+    push(chunk: string): string {
+      const split = splitTrailingPartial(held + chunk);
+      held = split.held;
+      return sanitizeLogText(split.ready);
+    },
+    flush(): string {
+      const rest = held;
+      held = "";
+      return sanitizeLogText(rest);
+    },
+  };
 }

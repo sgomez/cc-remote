@@ -9,7 +9,9 @@ import type { WorkspaceGitProbe } from "../src/core/domain/workspace-state";
 import type {
   CloneContainerSpec,
   ContainerEngine,
+  LogFollow,
   LoginContainerSpec,
+  LogSink,
   SessionContainerSpec,
 } from "../src/core/ports/container-engine";
 
@@ -44,6 +46,15 @@ export class FakeContainerEngine implements ContainerEngine {
   nextSessionLogs: string | Error = "";
   /** Log reads the use cases performed, for assertions. */
   readonly logReads: { sessionName: string; tail: number }[] = [];
+  /** Live follows the use cases opened, for assertions (and for driving them). */
+  readonly logFollows: {
+    sessionName: string;
+    tail: number;
+    sink: LogSink;
+    closed: boolean;
+  }[] = [];
+  /** Error the next `followSessionLogs` throws instead of opening a stream. */
+  nextFollowError: Error | null = null;
   /** Records specs the use cases passed, for assertions. */
   readonly runSessionSpecs: SessionContainerSpec[] = [];
   readonly runCloneSpecs: CloneContainerSpec[] = [];
@@ -181,6 +192,28 @@ export class FakeContainerEngine implements ContainerEngine {
     this.logReads.push({ sessionName, tail: options.tail });
     if (this.nextSessionLogs instanceof Error) throw this.nextSessionLogs;
     return this.nextSessionLogs;
+  }
+
+  async followSessionLogs(
+    sessionName: string,
+    options: { tail: number },
+    sink: LogSink,
+  ): Promise<LogFollow> {
+    if (this.nextFollowError) throw this.nextFollowError;
+    const entry = { sessionName, tail: options.tail, sink, closed: false };
+    this.logFollows.push(entry);
+    return {
+      close() {
+        entry.closed = true;
+      },
+    };
+  }
+
+  /** The follow opened last — the handle a test drives output through. */
+  get lastFollow() {
+    const entry = this.logFollows.at(-1);
+    if (!entry) throw new Error("no follow was opened");
+    return entry;
   }
 
   async runLoginContainer(spec: LoginContainerSpec): Promise<void> {
