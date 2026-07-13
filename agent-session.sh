@@ -25,9 +25,21 @@ echo "===================================================="
 echo ""
 
 if [ -n "$SESSION_UUID" ]; then
-    claude --session-id="$SESSION_UUID" \
-        --remote-control="$SESSION_NAME" \
-        --permission-mode="${PERMISSION_MODE:-auto}"
+    # --session-id claims the UUID as a NEW session and dies with "Session ID
+    # already in use" once its transcript exists — which is exactly what a
+    # container restart finds on the Account Config Volume. Resume the pinned
+    # session in that case; only a UUID with no transcript yet (fresh create or
+    # reset, which mints a new UUID) may claim it as new.
+    TRANSCRIPT="$HOME/.claude/projects/-workspace/$SESSION_UUID.jsonl"
+    if [ -f "$TRANSCRIPT" ]; then
+        claude --resume "$SESSION_UUID" \
+            --remote-control="$SESSION_NAME" \
+            --permission-mode="${PERMISSION_MODE:-auto}"
+    else
+        claude --session-id="$SESSION_UUID" \
+            --remote-control="$SESSION_NAME" \
+            --permission-mode="${PERMISSION_MODE:-auto}"
+    fi
 else
     claude --remote-control="$SESSION_NAME" \
         --permission-mode="${PERMISSION_MODE:-auto}"
