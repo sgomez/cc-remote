@@ -23,6 +23,7 @@ import {
   isSessionLabelled,
   loginContainerName,
   mainContainerName,
+  parseExitCode,
   toLoginContainer,
   toSessionContainer,
 } from "./container-mapping";
@@ -75,7 +76,15 @@ export class DockerContainerEngine implements ContainerEngine {
     const containers = await this.docker.listContainers({ all: true });
     return containers
       .filter((c) => isSessionLabelled(c.Labels))
-      .map((c) => toSessionContainer({ labels: c.Labels, state: c.State }));
+      .map((c) =>
+        toSessionContainer({
+          labels: c.Labels,
+          state: c.State,
+          // The list endpoint has no exit-code field; its human-readable
+          // `Status` ("Exited (137) 2 minutes ago") is the only carrier.
+          exitCode: parseExitCode(c.Status),
+        }),
+      );
   }
 
   async getSessionContainer(name: string): Promise<SessionContainer | null> {
@@ -83,7 +92,13 @@ export class DockerContainerEngine implements ContainerEngine {
     if (!found) return null;
     return toSessionContainer({
       labels: found.Config.Labels ?? {},
-      state: found.State.Status,
+      // An OOM kill exits 137 — indistinguishable, by the signal rule, from the
+      // SIGKILL that a normal `docker stop` leaves. But it IS a failure, so we
+      // report the state as `dead` (which the domain maps to `error`) rather
+      // than letting the kernel's kill masquerade as a user's stop. `inspect`
+      // is the only path that can see this; the list endpoint cannot.
+      state: found.State.OOMKilled ? "dead" : found.State.Status,
+      exitCode: found.State.ExitCode,
     });
   }
 

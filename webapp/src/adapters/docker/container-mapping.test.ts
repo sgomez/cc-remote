@@ -7,6 +7,7 @@ import {
   loginContainerName,
   loginTerminalBasePath,
   mainContainerName,
+  parseExitCode,
   toLoginContainer,
   toSessionContainer,
   ttydBasePath,
@@ -70,6 +71,22 @@ describe("toSessionContainer", () => {
     expect(sc.state).toBe("exited");
   });
 
+  it("passes an exit code through, and defaults a missing one to null", () => {
+    const crashed = toSessionContainer({
+      labels: { [SESSION_LABELS.name]: "demo" },
+      state: "exited",
+      exitCode: 3,
+    });
+    expect(crashed.exitCode).toBe(3);
+    // Absent (the caller could not read one) is null, never 0 — the domain
+    // must be able to tell "clean exit" from "we don't know".
+    const unknown = toSessionContainer({
+      labels: { [SESSION_LABELS.name]: "demo" },
+      state: "exited",
+    });
+    expect(unknown.exitCode).toBeNull();
+  });
+
   it("does not synthesize status — raw state only", () => {
     // A cloning helper that exited is 'exited' here; the domain maps that to
     // 'clone_failed', never the adapter.
@@ -78,6 +95,33 @@ describe("toSessionContainer", () => {
       state: "exited",
     });
     expect(sc.state).toBe("exited");
+  });
+});
+
+describe("parseExitCode", () => {
+  // `docker.listContainers()` returns a ContainerInfo with NO exit code field —
+  // its human-readable `Status` string is the only place the code appears, so
+  // the LIST path (and the 1s SSE stream it feeds) has to read it from there.
+  it.each([
+    ["Exited (0) 2 seconds ago", 0],
+    ["Exited (137) 2 minutes ago", 137],
+    ["Exited (143) About a minute ago", 143],
+    ["Exited (3) 11 seconds ago", 3],
+  ])("reads the code out of %s", (status, expected) => {
+    expect(parseExitCode(status)).toBe(expected);
+  });
+
+  it.each([
+    ["Up 3 hours", "a running container carries no exit code"],
+    ["Up 2 minutes (Paused)", "paused"],
+    ["Created", "never started"],
+    ["Restarting (1) 4 seconds ago", "still restarting, not a terminal exit"],
+    ["Removal In Progress", "teardown"],
+    ["Dead", "dead"],
+    ["", "empty"],
+    ["Exited (abc) 1 second ago", "unparseable code"],
+  ])("returns null for %s (%s)", (status) => {
+    expect(parseExitCode(status)).toBeNull();
   });
 });
 

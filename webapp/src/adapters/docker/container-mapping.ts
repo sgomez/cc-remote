@@ -33,6 +33,30 @@ export function toContainerState(raw: string): ContainerState {
   return CONTAINER_STATES.find((known) => known === state) ?? "unknown";
 }
 
+/**
+ * Docker's `ContainerInfo.Status` for an exited container, e.g.
+ * `"Exited (137) 2 minutes ago"`. Anchored on `Exited` so the superficially
+ * similar `"Restarting (1) 4 seconds ago"` — not a terminal exit — never matches.
+ */
+const EXITED_STATUS = /^Exited \((\d+)\)/;
+
+/**
+ * Pull the exit code out of the `Status` line of `docker.listContainers()`.
+ *
+ * The list endpoint's `ContainerInfo` carries NO exit-code field (unlike
+ * `inspect`, which has `State.ExitCode`), yet the list is what drives the
+ * sessions page and the 1s SSE status stream. This string is therefore the only
+ * way that path can tell a deliberate stop from a crash. Returns `null` when
+ * there is no code to read (running, paused, created, …) — the domain then
+ * degrades to `stopped` rather than inventing an error.
+ */
+export function parseExitCode(status: string): number | null {
+  const match = EXITED_STATUS.exec(status);
+  if (!match) return null;
+  const code = Number.parseInt(match[1], 10);
+  return Number.isNaN(code) ? null : code;
+}
+
 /** The `cc-remote-session-<name>` container that runs the agent. */
 export function mainContainerName(sessionName: string): string {
   return `cc-remote-session-${sessionName}`;
