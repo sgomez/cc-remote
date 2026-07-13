@@ -850,6 +850,10 @@ h1 a.path:hover {
   padding: 8px;
 }
 .terminal-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -857,6 +861,23 @@ h1 a.path:hover {
 }
 .terminal-status.error {
   color: #fca5a5;
+}
+/* Manual escape hatch from the auto-retry: shown whenever the socket is down,
+   so a phone that has been asleep for an hour is one tap from a live agent. */
+.terminal-reconnect {
+  margin-left: auto;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text-color);
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  /* Comfortably tappable on the touch screens this exists for. */
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.terminal-reconnect:hover {
+  background: rgba(148, 163, 184, 0.22);
 }
 
 /* ---- confirm dialog (native <dialog>, replaces window.confirm) ----------- */
