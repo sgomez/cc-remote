@@ -83,6 +83,15 @@ What was bought is a **reduction in blast radius and lifetime**, not the elimina
 
 It bounds *one* container. Nothing stops you from starting ten Sessions, and enough concurrent heavy ones can still overcommit the host. If "~2 memory-hot Sessions at once" is not how you work, override the limits in `config.json` rather than discovering it under load.
 
+## WebSocket, cookie and edge hardening (S4)
+
+A few smaller items from the 2026-07-13 architecture review, closed rather than left open:
+
+- **Origin check on WebSocket upgrades.** The terminal and Login Container WS proxies (`server/routes/ws/terminal/[name].ts`, `server/routes/ws/login/[id].ts`) now reject the upgrade (before any session lookup) unless the `Origin` header matches the deployment's own public URL (`BETTER_AUTH_URL`, the same origin better-auth signs cookies against). A missing `Origin` is rejected too — every browser sends it on a WS handshake, so its absence means the caller isn't the app's own UI. Previously the only defense against cross-site WebSocket hijacking was better-auth's implicit `SameSite=Lax` cookie default; this adds a second, independent check. See `src/server/ws-origin.ts`.
+- **Explicit better-auth cookie/origin config.** `trustedOrigins` is now pinned to `BETTER_AUTH_URL` explicitly, and cookie attributes (`sameSite: "lax"`, `httpOnly: true`, and a `BETTER_AUTH_URL`-scheme-derived `useSecureCookies`) are set explicitly in `src/adapters/auth/auth.ts` instead of relying on better-auth's implicit per-environment defaults.
+- **Security headers at the edge.** The `Caddyfile` now sends `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: frame-ancestors 'none'`, and `Referrer-Policy: no-referrer` on every response, and drops the `Server` header.
+- **0600 on generated secrets.** `config.js` now `chmod`s both `config.json` and the compiled `.env` to `0600` right after writing them — both hold plaintext secrets (`BETTER_AUTH_SECRET`, the GitHub OAuth client secret) and previously landed at the process's default mode.
+
 ## Sibling containers, not Docker-in-Docker
 
 For completeness, the architecture the above protects: the web manager never mounts the raw Docker socket and never runs Docker-in-Docker. It talks to the host daemon through a read-only, route-filtered `docker-socket-proxy` over TCP, and therefore runs unprivileged. Sessions are **sibling** containers created through that proxy, joined only to the agents network.
