@@ -9,12 +9,12 @@ import type { Session } from "../domain/session";
 import { workspaceVolumeName } from "../domain/session";
 import type { AccountRepository } from "../ports/account-repository";
 import type { ContainerEngine } from "../ports/container-engine";
+import type { GitHubTokenIssuer } from "../ports/github-token-issuer";
 import type { IdGenerator } from "../ports/id-generator";
 import { provisionSession } from "./provision-session";
 
 export type ResetSessionInput = {
   name: string;
-  githubToken: string;
   permissionMode?: string;
 };
 
@@ -22,6 +22,7 @@ export type ResetSessionDeps = {
   accounts: AccountRepository;
   engine: ContainerEngine;
   ids: IdGenerator;
+  issuer: GitHubTokenIssuer;
 };
 
 export function makeResetSession(deps: ResetSessionDeps) {
@@ -39,12 +40,11 @@ export function makeResetSession(deps: ResetSessionDeps) {
     await deps.engine.removeContainer(input.name);
     await deps.engine.removeVolume(workspaceVolumeName(input.name));
 
-    return provisionSession(deps.engine, {
+    return provisionSession(deps.engine, deps.issuer, {
       account,
       type,
       name: input.name,
       repo: container.repo,
-      githubToken: input.githubToken,
       sessionUuid: deps.ids.newId(),
       permissionMode: input.permissionMode ?? "auto",
     });

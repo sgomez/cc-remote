@@ -1,8 +1,11 @@
 // Session server functions (#16): thin delivery glue over the core session use
-// cases, wired through the Docker engine and the SQLite AccountRepository. The
-// GitHub token for cloning/pushing is read server-side from better-auth's stored
-// OAuth account (never sent to the client) and injected at container-create
-// time. Every function is auth-guarded (defence in depth over the route guard).
+// cases, wired through the Docker engine, the SQLite AccountRepository, and the
+// GitHub credential issuer. The GitHub token for cloning/pushing is read
+// server-side from better-auth's stored OAuth account (never sent to the
+// client) and obtained through the GitHubTokenIssuer port rather than being
+// passed as a raw string — later sub-issues swap the OAuth adapter for one
+// that mints installation tokens. Every function is auth-guarded (defence in
+// depth over the route guard).
 
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
@@ -18,6 +21,7 @@ import {
   makeStopSession,
   type WorkspaceState,
 } from "~/core";
+import type { GitHubTokenIssuer } from "~/core/ports/github-token-issuer";
 import type { SessionRow } from "~/ui/view-models/rows";
 import { accountRepository, containerEngine, permissionMode } from "./runtime";
 
@@ -25,11 +29,16 @@ async function guard(): Promise<void> {
   await requireSession(getRequest().headers);
 }
 
-/** GitHub token for cloning — required to create/reset a session. */
-async function githubToken(): Promise<string> {
-  const token = await getGithubAccessToken(getRequest().headers);
-  if (!token) throw new Error("No GitHub access token for the current session.");
-  return token;
+/** Adapter: resolve a credential from the signed-in user's stored OAuth token. */
+function githubTokenIssuer(): GitHubTokenIssuer {
+  return {
+    async issueToken(_repo: string) {
+      const token = await getGithubAccessToken(getRequest().headers);
+      if (!token) throw new Error("No GitHub access token for the current session.");
+      // OAuth tokens do not expire — use a far-future sentinel.
+      return { token, expiresAt: new Date("2099-01-01T00:00:00.000Z") };
+    },
+  };
 }
 
 export const listSessions = createServerFn({ method: "GET" }).handler(
@@ -48,12 +57,12 @@ export const createSession = createServerFn({ method: "POST" })
       accounts: await accountRepository(),
       engine: containerEngine(),
       ids: uuidGenerator,
+      issuer: githubTokenIssuer(),
     });
     const session = await create({
       name: data.name,
       repo: data.repo,
       accountId: data.accountId,
-      githubToken: await githubToken(),
       permissionMode: permissionMode(),
     });
     return { name: session.name };
@@ -93,10 +102,10 @@ export const resetSession = createServerFn({ method: "POST" })
       accounts: await accountRepository(),
       engine: containerEngine(),
       ids: uuidGenerator,
+      issuer: githubTokenIssuer(),
     });
     await reset({
       name: data.name,
-      githubToken: await githubToken(),
       permissionMode: permissionMode(),
     });
   });

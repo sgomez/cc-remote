@@ -11,24 +11,27 @@ import type { Session } from "../domain/session";
 import { buildCloneLabels, buildSessionLabels, workspaceVolumeName } from "../domain/session";
 import { buildCloneEnv, buildSessionEnv } from "../domain/session-env";
 import type { ContainerEngine } from "../ports/container-engine";
+import type { GitHubTokenIssuer } from "../ports/github-token-issuer";
 
 export type ProvisionSessionParams = {
   account: Account;
   type: ProviderType;
   name: string;
   repo: string;
-  githubToken: string;
   sessionUuid: string;
   permissionMode: string;
 };
 
 export async function provisionSession(
   engine: ContainerEngine,
+  issuer: GitHubTokenIssuer,
   params: ProvisionSessionParams,
 ): Promise<Session> {
   const { account, type, name, repo } = params;
   const workspaceVolume = workspaceVolumeName(name);
   const labelInput = { name, repo, accountId: account.id };
+
+  const { token: githubToken } = await issuer.issueToken(repo);
 
   await engine.createVolume(workspaceVolume);
 
@@ -37,7 +40,7 @@ export async function provisionSession(
     repo,
     accountId: account.id,
     workspaceVolume,
-    env: buildCloneEnv({ githubToken: params.githubToken, repo }),
+    env: buildCloneEnv({ githubToken, repo }),
     labels: buildCloneLabels(labelInput),
   });
 
@@ -56,7 +59,7 @@ export async function provisionSession(
       repo,
       sessionName: name,
       sessionUuid: params.sessionUuid,
-      githubToken: params.githubToken,
+      githubToken,
       permissionMode: params.permissionMode,
     }),
     labels: buildSessionLabels(labelInput),

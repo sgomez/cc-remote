@@ -8,6 +8,7 @@ import type { Session } from "../domain/session";
 import { assertValidRepo, assertValidSessionName } from "../domain/session";
 import type { AccountRepository } from "../ports/account-repository";
 import type { ContainerEngine } from "../ports/container-engine";
+import type { GitHubTokenIssuer } from "../ports/github-token-issuer";
 import type { IdGenerator } from "../ports/id-generator";
 import { provisionSession } from "./provision-session";
 
@@ -15,7 +16,6 @@ export type CreateSessionInput = {
   name: string;
   repo: string;
   accountId: string;
-  githubToken: string;
   permissionMode?: string;
 };
 
@@ -23,6 +23,7 @@ export type CreateSessionDeps = {
   accounts: AccountRepository;
   engine: ContainerEngine;
   ids: IdGenerator;
+  issuer: GitHubTokenIssuer;
 };
 
 export function makeCreateSession(deps: CreateSessionDeps) {
@@ -40,12 +41,11 @@ export function makeCreateSession(deps: CreateSessionDeps) {
 
     const type = requireProviderType(account.providerType);
 
-    return provisionSession(deps.engine, {
+    return provisionSession(deps.engine, deps.issuer, {
       account,
       type,
       name: input.name,
       repo: input.repo,
-      githubToken: input.githubToken,
       sessionUuid: deps.ids.newId(),
       permissionMode: input.permissionMode ?? "auto",
     });
