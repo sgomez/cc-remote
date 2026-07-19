@@ -64,8 +64,8 @@ function RepositoriesPage() {
                 </span>
               ) : inst.repositories.length > 0 ? (
                 <span className="card-meta">
-                  {inst.repositories.length} repository
-                  {inst.repositories.length > 1 ? "ies" : "y"} granted
+                  {inst.repositories.length}{" "}
+                  {inst.repositories.length === 1 ? "repository" : "repositories"} granted
                 </span>
               ) : (
                 <span className="card-meta">No explicit repositories listed.</span>
