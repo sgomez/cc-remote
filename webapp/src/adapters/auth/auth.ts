@@ -15,6 +15,7 @@ import { debug } from "../../debug";
 import { DB_PATH, ensureDbDir } from "../db/db-path";
 import { isLoginAllowed, parseAllowList } from "./allow-list";
 import { githubAdditionalFields, mapGithubProfileToUser } from "./github-profile";
+import { GITHUB_OAUTH_SCOPE } from "./github-scope";
 
 const log = debug("auth");
 const ALLOWED = parseAllowList(process.env.ALLOWED_GITHUB_USERS);
@@ -38,9 +39,10 @@ export const auth = betterAuth({
     github: {
       clientId: process.env.GITHUB_CLIENT_ID ?? "",
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
-      // `repo` = push/pull private repos (parity with the legacy token);
-      // `user:email` is mandatory for better-auth's GitHub provider.
-      scope: ["repo", "user:email"],
+      // `user:email` is mandatory for better-auth's GitHub provider. GitHub Apps
+      // ignore authorisation-URL scopes; permissions come from the App's own
+      // configuration.
+      scope: [...GITHUB_OAUTH_SCOPE],
       mapProfileToUser: mapGithubProfileToUser,
     },
   },
