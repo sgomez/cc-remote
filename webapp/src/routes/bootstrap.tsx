@@ -33,7 +33,7 @@ export const Route = createFileRoute("/bootstrap")({
     // When a manifest key is present from the App Manifest Flow callback,
     // load the pre-filled data on the server so the form renders immediately
     // without an extra client-side fetch.
-    const params = new URLSearchParams(location.search.replace(/^\?/, ""));
+    const params = new URLSearchParams(String(location.search).replace(/^\?/, ""));
     const key = params.get("manifest");
     if (key) {
       const result = await loadManifestResult({ data: { key } });
@@ -68,7 +68,7 @@ function BootstrapPage() {
   };
 
   const { search } = useLocation();
-  const params = new URLSearchParams(search.replace(/^\?/, ""));
+  const params = new URLSearchParams(String(search).replace(/^\?/, ""));
   const searchError = params.get("manifestError");
 
   // When returning from the App Manifest Flow, start directly in the form
