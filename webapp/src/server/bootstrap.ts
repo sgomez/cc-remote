@@ -3,7 +3,7 @@
 // TanStack Start compiler strips the handlers from the client bundle, so the fs
 // imports never reach the browser.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { createServerFn } from "@tanstack/react-start";
 import {
@@ -120,3 +120,17 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
     setTimeout(() => process.exit(0), 100);
     return { ok: true };
   });
+
+/**
+ * Spend (delete) the claim token. Called after the first successful sign-in
+ * so the unauthenticated bootstrap surface closes permanently once the
+ * operator can authenticate (issue #57). Idempotent: when the token was
+ * already spent (or the deployment was never unconfigured) this is a no-op.
+ */
+export const spendClaimToken = createServerFn({ method: "POST" }).handler(async () => {
+  try {
+    unlinkSync(CLAIM_TOKEN_FILE);
+  } catch {
+    // File doesn't exist — already spent or never issued. No-op.
+  }
+});
