@@ -1,10 +1,15 @@
 /**
- * Bootstrap domain: pure logic for the deployment's GitHub identity.
+ * Bootstrap domain: pure logic for the deployment's GitHub identity and the
+ * Claim Token that gates the bootstrap screen.
  *
  * The Bootstrap File is a JSON file on the data volume that holds the
  * GitHub App credentials. It is the single source of truth for the
  * deployment's GitHub identity (App ID, slug, OAuth client ID/secret,
  * private key, sign-in allow-list).
+ *
+ * The Claim Token is issued by the container entrypoint when the deployment
+ * is unconfigured. It proves the operator owns the host and gates the
+ * bootstrap screen, which sits outside the sign-in it configures.
  *
  * Framework-free and pure — no I/O, no adapters, just data types and
  * validation functions. The Bootstrap File is read by an adapter (or the
@@ -150,4 +155,60 @@ export function validateBootstrapRecord(record: BootstrapRecord): string[] {
   }
 
   return errors;
+}
+
+// ---- Claim Token ------------------------------------------------------------
+
+/** Byte length of the generated token (32 bytes = 256 bits of entropy). */
+const CLAIM_TOKEN_BYTES = 32;
+
+/**
+ * Generate a cryptographically random Claim Token.
+ *
+ * Uses the Web Crypto API (`globalThis.crypto`) so it works in both Node.js
+ * and browser runtimes without importing a Node-specific module.
+ */
+export function generateClaimToken(): string {
+  const bytes = new Uint8Array(CLAIM_TOKEN_BYTES);
+  globalThis.crypto.getRandomValues(bytes);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+/**
+ * Verify a supplied claim token against the stored token with a constant-time
+ * comparison. Returns `false` for a missing or empty stored token, for an empty
+ * supplied token, and for a mismatch — the caller learns nothing beyond "valid
+ * or not".
+ *
+ * The function deliberately avoids early returns on length mismatch: it still
+ * runs a constant-time comparison against a dummy buffer so an attacker cannot
+ * distinguish "wrong length" from "wrong value" through timing.
+ */
+export function verifyClaimToken(stored: string | undefined, supplied: string): boolean {
+  if (!stored || !supplied) return false;
+
+  const a = new TextEncoder().encode(stored);
+  const b = new TextEncoder().encode(supplied);
+
+  if (a.length !== b.length) {
+    // Constant-time reject: XOR each stored byte against itself (always
+    // zero), so the loop runs for the same duration as a successful
+    // comparison would, but the result is discarded.
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result |= a[i] ^ a[i];
+    }
+    void result;
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a[i] ^ b[i];
+  }
+  return result === 0;
 }

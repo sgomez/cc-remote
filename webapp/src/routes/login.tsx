@@ -1,16 +1,19 @@
 // Public login screen (#16): GitHub sign-in via better-auth (#12). The only app
 // route NOT behind the /_app auth guard. An already-authenticated visitor is
-// redirected straight to /sessions. Access is still gated server-side by the
-// fail-closed allow-list — a non-listed user completes the OAuth round-trip and
-// is rejected by better-auth's session hook, landing back here.
+// redirected straight to /sessions. While the deployment is unconfigured this
+// redirects to /bootstrap instead — sign-in cannot work without a GitHub identity.
+// Access is still gated server-side by the fail-closed allow-list.
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { signInWithGithub } from "~/adapters/auth/client";
 import { fetchSession } from "~/server/auth";
+import { fetchDeploymentState } from "~/server/bootstrap";
 
 export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
+    const { configured } = await fetchDeploymentState();
+    if (!configured) throw redirect({ to: "/bootstrap" });
     const session = await fetchSession();
     if (session) throw redirect({ to: "/sessions" });
   },

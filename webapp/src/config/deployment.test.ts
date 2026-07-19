@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DeploymentConfigError, loadDeploymentConfig } from "./deployment";
 import type { BootstrapRecord } from "../core/domain/bootstrap";
+import { DeploymentConfigError, loadDeploymentConfig } from "./deployment";
 
 // A complete, valid infra env (the "new app" set from PRD §8 / issue #17).
 // Individual cases clone this and remove/override keys to exercise a rule.
@@ -92,9 +92,9 @@ describe("loadDeploymentConfig", () => {
   });
 
   it("treats an empty required var (whitespace only) as missing", () => {
-    expect(() =>
-      loadDeploymentConfig({ ...VALID, BETTER_AUTH_URL: "   " }),
-    ).toThrow(DeploymentConfigError);
+    expect(() => loadDeploymentConfig({ ...VALID, BETTER_AUTH_URL: "   " })).toThrow(
+      DeploymentConfigError,
+    );
   });
 
   it("rejects an empty allow-list when GitHub env vars are present (fail-closed)", () => {
@@ -167,9 +167,9 @@ describe("loadDeploymentConfig", () => {
   });
 
   it("rejects a non-numeric GITHUB_APP_ID from env", () => {
-    expect(() =>
-      loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" }),
-    ).toThrow(/GITHUB_APP_ID/);
+    expect(() => loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" })).toThrow(
+      /GITHUB_APP_ID/,
+    );
   });
 
   it("rejects a base64 GITHUB_APP_PRIVATE_KEY that does not decode to a PEM", () => {

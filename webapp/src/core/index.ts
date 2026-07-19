@@ -12,7 +12,9 @@ export type {
 } from "./domain/bootstrap";
 export {
   deriveBootstrapRecordFromManifest,
+  generateClaimToken,
   validateBootstrapRecord,
+  verifyClaimToken,
 } from "./domain/bootstrap";
 export * from "./domain/errors";
 export type { LoginContainer } from "./domain/login";

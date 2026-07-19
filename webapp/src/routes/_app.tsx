@@ -18,10 +18,17 @@ import { createFileRoute, Link, Outlet, redirect, useRouter } from "@tanstack/re
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "~/adapters/auth/client";
 import { fetchSession } from "~/server/auth";
+import { fetchDeploymentState } from "~/server/bootstrap";
 import { FeedbackProvider } from "~/ui/components/feedback";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async () => {
+    // When the deployment is unconfigured there is no GitHub identity yet,
+    // so sign-in cannot work. Redirect to /bootstrap so the operator can
+    // claim the deployment first.
+    const { configured } = await fetchDeploymentState();
+    if (!configured) throw redirect({ to: "/bootstrap" });
+
     const session = await fetchSession();
     if (!session) throw redirect({ to: "/login" });
     return { user: session.user };
