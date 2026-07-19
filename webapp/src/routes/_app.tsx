@@ -18,7 +18,7 @@ import { createFileRoute, Link, Outlet, redirect, useRouter } from "@tanstack/re
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "~/adapters/auth/client";
 import { fetchSession } from "~/server/auth";
-import { fetchDeploymentState } from "~/server/bootstrap";
+import { fetchDeploymentState, spendClaimToken } from "~/server/bootstrap";
 import { FeedbackProvider } from "~/ui/components/feedback";
 
 export const Route = createFileRoute("/_app")({
@@ -31,6 +31,15 @@ export const Route = createFileRoute("/_app")({
 
     const session = await fetchSession();
     if (!session) throw redirect({ to: "/login" });
+
+    // Spend the claim token on the first successful sign-in after the
+    // deployment is configured (issue #57). The token survives the restart
+    // that follows Bootstrap File creation so a sign-in failure does not
+    // lock the operator out. On the first successful sign-in the token file
+    // is deleted, closing the unauthenticated bootstrap surface permanently.
+    // Idempotent: subsequent calls are no-ops once the file is gone.
+    await spendClaimToken();
+
     return { user: session.user };
   },
   loader: ({ context }) => ({ user: context.user }),

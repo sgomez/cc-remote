@@ -18,8 +18,11 @@ CLAIM_TOKEN_FILE="/data/claim-token"
 
 if [ -f "$BOOTSTRAP_FILE" ]; then
   echo "[entrypoint] deployment is configured (bootstrap file found)"
-  # Clean up any leftover claim token from an earlier unconfigured state.
-  rm -f "$CLAIM_TOKEN_FILE"
+  # The claim token is kept on disk after configuration so it can be spent
+  # on the first successful sign-in (issue #57). Keeping it through the
+  # restart means a sign-in failure after a successful App registration does
+  # not lock the operator out -- the token is still valid for a retry.
+  # It is deleted (spent) server-side on the first successful session create.
 else
   echo "[entrypoint] deployment is unconfigured — issuing claim token..."
   CLAIM_TOKEN=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
@@ -46,3 +49,13 @@ pnpm run --silent migrate
 
 echo "[entrypoint] starting web-manager on port ${PORT:-4000}..."
 exec node .output/server/index.mjs
+
+# Reopen bootstrap (host-side command, issue #57):
+#
+#   docker exec cc-remote-web-manager rm /data/bootstrap.json /data/claim-token
+#   docker compose restart
+#
+# Removes the Bootstrap File (and any leftover claim token) then restarts
+# web-manager. On restart the entrypoint detects an unconfigured deployment
+# and issues a fresh Claim Token in the logs and on the data volume. The old
+# token is invalidated. Running Sessions (sibling containers) are unaffected.
