@@ -276,11 +276,16 @@ async function main() {
   const caddyHttpPortBind = (enableCaddy && httpPort > 0) ? `${httpPort}:80` : '127.0.0.1:40080:80';
 
   // BETTER_AUTH_URL is the public origin better-auth signs cookies / builds the
-  // GitHub OAuth callback against. Always non-empty (homepageUrl covers the
-  // Caddy-fronted https case and the local http case). Replaces the legacy BASE_URL.
+  // GitHub OAuth callback against. Always non-empty. With Caddy enabled the
+  // scheme is always https; with Caddy disabled, http for localhost and https
+  // for non-localhost (expects an external TLS reverse proxy).
+  // Replaces the legacy BASE_URL.
+  const isLocal = domain.startsWith('localhost') || domain.startsWith('127.0.0.1');
   const betterAuthUrl = enableCaddy
     ? `https://${domain}`
-    : `http://${domain}`;
+    : isLocal
+      ? `http://${domain}`
+      : `https://${domain}`;
 
   // Build .env file contents. Infra only — GitHub identity (OAuth client credentials,
   // App ID, private key, slug, allow-list) is configured through the browser bootstrap
