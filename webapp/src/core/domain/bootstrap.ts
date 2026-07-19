@@ -157,6 +157,69 @@ export function validateBootstrapRecord(record: BootstrapRecord): string[] {
   return errors;
 }
 
+// ---- App Manifest Flow -------------------------------------------------------
+
+/**
+ * A GitHub App Manifest for the App Manifest Flow.
+ *
+ * Submitted to GitHub at `https://github.com/settings/apps/new` as a URL-encoded
+ * JSON `manifest` query parameter. GitHub creates the App from this manifest and
+ * redirects back to the `redirect_url` with a temporary code.
+ */
+export type GithubAppManifest = {
+  /** App name, derived from the deployment hostname. */
+  name: string;
+  /** Homepage URL (the deployment's own URL). */
+  url: string;
+  /**
+   * Where GitHub redirects after the App is created. Must point to the
+   * callback route on this deployment.
+   */
+  redirect_url: string;
+  /**
+   * OAuth callback URLs. Must include the deployment's own callback path
+   * (`/api/auth/callback/github`). Only the first is used when the App is
+   * created from a manifest; GitHub sets the rest.
+   */
+  callback_urls: string[];
+  /** The App is public (required for OAuth user-to-server flow). */
+  public: boolean;
+  /**
+   * Default repository permissions the App will request on installation.
+   * Sessions need contents (write) to clone repos with the installation token,
+   * and pull_requests (write) to push branches and open PRs.
+   */
+  default_permissions: {
+    contents: string;
+    pull_requests: string;
+  };
+};
+
+/**
+ * Build a GitHub App Manifest from the deployment's base URL.
+ *
+ * The manifest declares the App's identity, permissions, and the callback URLs
+ * that GitHub will use. The `redirect_url` points at this deployment's manifest
+ * callback route, which exchanges the temporary code for credentials.
+ *
+ * The App name is derived from the hostname so multiple deployments on
+ * different domains produce different App names.
+ */
+export function buildManifest(baseUrl: string): GithubAppManifest {
+  const cleanUrl = baseUrl.replace(/\/+$/, "");
+  return {
+    name: `cc-remote-${new URL(cleanUrl).hostname}`,
+    url: cleanUrl,
+    redirect_url: `${cleanUrl}/bootstrap/manifest/callback`,
+    callback_urls: [`${cleanUrl}/api/auth/callback/github`],
+    public: true,
+    default_permissions: {
+      contents: "write",
+      pull_requests: "write",
+    },
+  };
+}
+
 // ---- Claim Token ------------------------------------------------------------
 
 /** Byte length of the generated token (32 bytes = 256 bits of entropy). */
