@@ -27,18 +27,16 @@ function setup() {
   const engine = new FakeContainerEngine();
   const ids = new FakeIdGenerator("uuid");
   const cloneIssuer = new FakeGitHubTokenIssuer();
-  const sessionIssuer = new FakeGitHubTokenIssuer();
   const secretRegistry = new FakeBrokerSecretRegistry();
   const reset = makeResetSession({
     accounts,
     engine,
     ids,
     cloneIssuer,
-    sessionIssuer,
     secretRegistry,
     brokerUrl: "http://broker:4001",
   });
-  return { accounts, engine, ids, cloneIssuer, sessionIssuer, secretRegistry, reset };
+  return { accounts, engine, ids, cloneIssuer, secretRegistry, reset };
 }
 
 describe("reset-session", () => {
@@ -64,7 +62,6 @@ describe("reset-session", () => {
 
     expect(session).toEqual({ name: "s", repo: "o/r", accountId: "acc-1", status: "running" });
     expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
-    expect(ctx.sessionIssuer.issuedRepos).toEqual(["o/r"]);
     expect(ctx.engine.hasVolume(workspaceVolumeName("s"))).toBe(true);
     const spec = ctx.engine.runSessionSpecs.at(-1);
     expect(spec?.env.SESSION_UUID).toBe("uuid-1");

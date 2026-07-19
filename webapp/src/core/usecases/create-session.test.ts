@@ -36,7 +36,6 @@ function setup(seed: Account[] = [account()]) {
   const engine = new FakeContainerEngine();
   const ids = new FakeIdGenerator("uuid");
   const cloneIssuer = new FakeGitHubTokenIssuer();
-  const sessionIssuer = new FakeGitHubTokenIssuer();
   const secretRegistry = new FakeBrokerSecretRegistry();
   // Seed a default "all" installation so existing tests still pass.
   cloneIssuer.installations = [
@@ -53,11 +52,10 @@ function setup(seed: Account[] = [account()]) {
     engine,
     ids,
     cloneIssuer,
-    sessionIssuer,
     secretRegistry,
     brokerUrl: "http://broker:4001",
   });
-  return { accounts, engine, ids, cloneIssuer, sessionIssuer, secretRegistry, create };
+  return { accounts, engine, ids, cloneIssuer, secretRegistry, create };
 }
 
 const input = { name: "s1", repo: "o/r", accountId: "acc-1" };
@@ -161,7 +159,6 @@ describe("create-session", () => {
     expect(session).toEqual({ name: "s1", repo: "o/r", accountId: "acc-1", status: "running" });
 
     expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
-    expect(ctx.sessionIssuer.issuedRepos).toEqual(["o/r"]);
 
     expect(ctx.engine.hasVolume(workspaceVolumeName("s1"))).toBe(true);
     // clone helper was removed after a clean exit
@@ -183,8 +180,8 @@ describe("create-session", () => {
     const spec = ctx.engine.runSessionSpecs[0];
     expect(spec.env.CC_BROKER_SECRET).toBe("secret-uuid-1");
     expect(spec.env.CC_BROKER_URL).toBe("http://broker:4001");
-    // The durable token is still present.
-    expect(spec.env.GITHUB_TOKEN).toBeTruthy();
+    // The durable token is gone — git credentials are fetched on demand from the broker.
+    expect(spec.env.GITHUB_TOKEN).toBeUndefined();
   });
 
   it("leaves the clone helper (clone_failed) and no main container when clone fails", async () => {

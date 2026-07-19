@@ -28,7 +28,6 @@ export type ProvisionSessionParams = {
 export async function provisionSession(
   engine: ContainerEngine,
   cloneIssuer: GitHubTokenIssuer,
-  sessionIssuer: GitHubTokenIssuer,
   ids: IdGenerator,
   secretRegistry: BrokerSecretRegistry,
   params: ProvisionSessionParams,
@@ -38,7 +37,6 @@ export async function provisionSession(
   const labelInput = { name, repo, accountId: account.id };
 
   const { token: cloneToken } = await cloneIssuer.issueToken(repo);
-  const { token: sessionToken } = await sessionIssuer.issueToken(repo);
 
   const brokerSecret = ids.newSecret();
   // Register before the clone starts so the broker is ready the moment the
@@ -71,7 +69,6 @@ export async function provisionSession(
       repo,
       sessionName: name,
       sessionUuid: params.sessionUuid,
-      githubToken: sessionToken,
       permissionMode: params.permissionMode,
       brokerSecret,
       brokerUrl: params.brokerUrl,

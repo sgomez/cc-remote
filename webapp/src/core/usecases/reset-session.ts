@@ -24,7 +24,6 @@ export type ResetSessionDeps = {
   engine: ContainerEngine;
   ids: IdGenerator;
   cloneIssuer: GitHubTokenIssuer;
-  sessionIssuer: GitHubTokenIssuer;
   secretRegistry: BrokerSecretRegistry;
   brokerUrl: string;
 };
@@ -44,21 +43,14 @@ export function makeResetSession(deps: ResetSessionDeps) {
     await deps.engine.removeContainer(input.name);
     await deps.engine.removeVolume(workspaceVolumeName(input.name));
 
-    return provisionSession(
-      deps.engine,
-      deps.cloneIssuer,
-      deps.sessionIssuer,
-      deps.ids,
-      deps.secretRegistry,
-      {
-        account,
-        type,
-        name: input.name,
-        repo: container.repo,
-        sessionUuid: deps.ids.newId(),
-        permissionMode: input.permissionMode ?? "auto",
-        brokerUrl: deps.brokerUrl,
-      },
-    );
+    return provisionSession(deps.engine, deps.cloneIssuer, deps.ids, deps.secretRegistry, {
+      account,
+      type,
+      name: input.name,
+      repo: container.repo,
+      sessionUuid: deps.ids.newId(),
+      permissionMode: input.permissionMode ?? "auto",
+      brokerUrl: deps.brokerUrl,
+    });
   };
 }
