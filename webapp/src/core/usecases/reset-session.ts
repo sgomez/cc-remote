@@ -22,7 +22,8 @@ export type ResetSessionDeps = {
   accounts: AccountRepository;
   engine: ContainerEngine;
   ids: IdGenerator;
-  issuer: GitHubTokenIssuer;
+  cloneIssuer: GitHubTokenIssuer;
+  sessionIssuer: GitHubTokenIssuer;
 };
 
 export function makeResetSession(deps: ResetSessionDeps) {
@@ -40,7 +41,7 @@ export function makeResetSession(deps: ResetSessionDeps) {
     await deps.engine.removeContainer(input.name);
     await deps.engine.removeVolume(workspaceVolumeName(input.name));
 
-    return provisionSession(deps.engine, deps.issuer, {
+    return provisionSession(deps.engine, deps.cloneIssuer, deps.sessionIssuer, {
       account,
       type,
       name: input.name,

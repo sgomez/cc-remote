@@ -23,7 +23,8 @@ export type CreateSessionDeps = {
   accounts: AccountRepository;
   engine: ContainerEngine;
   ids: IdGenerator;
-  issuer: GitHubTokenIssuer;
+  cloneIssuer: GitHubTokenIssuer;
+  sessionIssuer: GitHubTokenIssuer;
 };
 
 export function makeCreateSession(deps: CreateSessionDeps) {
@@ -41,7 +42,7 @@ export function makeCreateSession(deps: CreateSessionDeps) {
 
     const type = requireProviderType(account.providerType);
 
-    return provisionSession(deps.engine, deps.issuer, {
+    return provisionSession(deps.engine, deps.cloneIssuer, deps.sessionIssuer, {
       account,
       type,
       name: input.name,

@@ -24,14 +24,16 @@ export type ProvisionSessionParams = {
 
 export async function provisionSession(
   engine: ContainerEngine,
-  issuer: GitHubTokenIssuer,
+  cloneIssuer: GitHubTokenIssuer,
+  sessionIssuer: GitHubTokenIssuer,
   params: ProvisionSessionParams,
 ): Promise<Session> {
   const { account, type, name, repo } = params;
   const workspaceVolume = workspaceVolumeName(name);
   const labelInput = { name, repo, accountId: account.id };
 
-  const { token: githubToken } = await issuer.issueToken(repo);
+  const { token: cloneToken } = await cloneIssuer.issueToken(repo);
+  const { token: sessionToken } = await sessionIssuer.issueToken(repo);
 
   await engine.createVolume(workspaceVolume);
 
@@ -40,7 +42,7 @@ export async function provisionSession(
     repo,
     accountId: account.id,
     workspaceVolume,
-    env: buildCloneEnv({ githubToken, repo }),
+    env: buildCloneEnv({ githubToken: cloneToken, repo }),
     labels: buildCloneLabels(labelInput),
   });
 
@@ -59,7 +61,7 @@ export async function provisionSession(
       repo,
       sessionName: name,
       sessionUuid: params.sessionUuid,
-      githubToken,
+      githubToken: sessionToken,
       permissionMode: params.permissionMode,
     }),
     labels: buildSessionLabels(labelInput),

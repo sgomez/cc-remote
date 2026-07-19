@@ -33,9 +33,10 @@ function setup(seed: Account[] = [account()]) {
   const accounts = new FakeAccountRepository(seed);
   const engine = new FakeContainerEngine();
   const ids = new FakeIdGenerator("uuid");
-  const issuer = new FakeGitHubTokenIssuer();
-  const create = makeCreateSession({ accounts, engine, ids, issuer });
-  return { accounts, engine, ids, issuer, create };
+  const cloneIssuer = new FakeGitHubTokenIssuer();
+  const sessionIssuer = new FakeGitHubTokenIssuer();
+  const create = makeCreateSession({ accounts, engine, ids, cloneIssuer, sessionIssuer });
+  return { accounts, engine, ids, cloneIssuer, sessionIssuer, create };
 }
 
 const input = { name: "s1", repo: "o/r", accountId: "acc-1" };
@@ -71,7 +72,8 @@ describe("create-session", () => {
     const session = await ctx.create(input);
     expect(session).toEqual({ name: "s1", repo: "o/r", accountId: "acc-1", status: "running" });
 
-    expect(ctx.issuer.issuedRepos).toEqual(["o/r"]);
+    expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
+    expect(ctx.sessionIssuer.issuedRepos).toEqual(["o/r"]);
 
     expect(ctx.engine.hasVolume(workspaceVolumeName("s1"))).toBe(true);
     // clone helper was removed after a clean exit
