@@ -159,6 +159,7 @@ describe("buildManifest", () => {
       default_permissions: {
         contents: "write",
         pull_requests: "write",
+        emails: "read",
       },
     });
   });
@@ -180,6 +181,7 @@ describe("buildManifest", () => {
     expect(manifest.default_permissions).toEqual({
       contents: "write",
       pull_requests: "write",
+      emails: "read",
     });
   });
 

@@ -192,6 +192,7 @@ export type GithubAppManifest = {
   default_permissions: {
     contents: string;
     pull_requests: string;
+    emails: string;
   };
 };
 

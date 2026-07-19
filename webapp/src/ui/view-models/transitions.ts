@@ -11,7 +11,7 @@
 // moving left slides in from the left.
 
 /** Sidebar order. Index = position on the strip; direction is derived from it. */
-export const SECTIONS = ["sessions", "accounts"] as const;
+export const SECTIONS = ["sessions", "accounts", "repositories"] as const;
 
 export type Section = (typeof SECTIONS)[number];
 

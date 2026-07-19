@@ -18,6 +18,7 @@ describe("sectionOf", () => {
     expect(sectionOf("/sessions")).toBe("sessions");
     expect(sectionOf("/sessions/api-refactor")).toBe("sessions");
     expect(sectionOf("/accounts/abc123")).toBe("accounts");
+    expect(sectionOf("/repositories")).toBe("repositories");
   });
 
   it("has no section for paths off the sidebar", () => {
@@ -43,6 +44,10 @@ describe("navigationTypes", () => {
   it("mirrors a lateral move: sidebar order decides, not the history index", () => {
     expect(nav("/sessions", "/accounts")).toEqual(["forward"]);
     expect(nav("/accounts", "/sessions")).toEqual(["backward"]);
+    expect(nav("/accounts", "/repositories")).toEqual(["forward"]);
+    expect(nav("/repositories", "/accounts")).toEqual(["backward"]);
+    expect(nav("/sessions", "/repositories")).toEqual(["forward"]);
+    expect(nav("/repositories", "/sessions")).toEqual(["backward"]);
   });
 
   it("takes direction from the section, not the depth of the path", () => {

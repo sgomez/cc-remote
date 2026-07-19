@@ -16,6 +16,8 @@ export const Route = createFileRoute("/_app/repositories/")({
     ]);
     return { installations, installUrl };
   },
+  pendingMs: 0,
+  pendingComponent: RepositoriesPendingPage,
   component: RepositoriesPage,
 });
 
@@ -96,6 +98,33 @@ function RepositoriesPage() {
             installation on GitHub, you will be redirected back here automatically.
           </div>
         )}
+      </div>
+    </>
+  );
+}
+
+function RepositoriesPendingPage() {
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>
+            <span className="path">~/</span>repositories
+          </h1>
+          <p className="subtle">
+            GitHub App installations that grant this deployment access to repositories.
+          </p>
+        </div>
+        <button type="button" className="btn primary" disabled>
+          Manage on GitHub
+        </button>
+      </div>
+
+      <div className="card-list" style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <span className="spinner" style={{ width: 24, height: 24, borderWidth: 3 }} />
+          <span className="card-meta">Loading installations...</span>
+        </div>
       </div>
     </>
   );
