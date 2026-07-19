@@ -39,16 +39,16 @@ The manager signs you in and clones repositories through a **GitHub App** regist
 Clone the latest tagged release (not `main`, which may be unstable):
 
 ```bash
-git clone --branch v1.0.0-alpha.2 https://github.com/sgomez/cc-remote.git
+git clone --branch v1.0.0-alpha.1 https://github.com/sgomez/cc-remote.git
 cd cc-remote
 ```
 
 No Git on the VPS? Download the release as a ZIP instead:
 
 ```bash
-curl -L -o cc-remote.zip https://github.com/sgomez/cc-remote/archive/refs/tags/v1.0.0-alpha.2.zip
+curl -L -o cc-remote.zip https://github.com/sgomez/cc-remote/archive/refs/tags/v1.0.0-alpha.1.zip
 unzip cc-remote.zip
-cd cc-remote-1.0.0-alpha.2
+cd cc-remote-1.0.0-alpha.1
 ```
 
 ## Step 3: Run the setup wizard

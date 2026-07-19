@@ -11,7 +11,7 @@ Sign in with GitHub, register an **Account** once, and spin up as many sandboxed
 </p>
 
 > [!WARNING]
-> The `main` branch is under active development and may be unstable. Deploy the latest tagged release (currently `v1.0.0-alpha.2`), not `main`.
+> The `main` branch is under active development and may be unstable. Deploy the latest tagged release (currently `v1.0.0-alpha.1`), not `main`.
 
 ## Features
 
@@ -35,7 +35,7 @@ Sign in with GitHub, register an **Account** once, and spin up as many sandboxed
 You need a VPS with **Docker**, **Docker Compose** and **Git**, plus a **GitHub App** (takes a few minutes; the [install guide](docs/install.md#step-1-create-a-github-app) walks you through it). No Claude Code install on the host.
 
 ```bash
-git clone --branch v1.0.0-alpha.2 https://github.com/sgomez/cc-remote.git
+git clone --branch v1.0.0-alpha.1 https://github.com/sgomez/cc-remote.git
 cd cc-remote
 ./setup.sh
 ```
@@ -55,7 +55,7 @@ First time? Follow the **[step-by-step install guide](docs/install.md)**.
 Your settings (`config.json`, `.env`) are gitignored and survive updates, and running Sessions are left untouched:
 
 ```bash
-git fetch --tags && git checkout v1.0.0-alpha.2
+git fetch --tags && git checkout v1.0.0-alpha.1
 docker compose up -d --build
 ```
 
@@ -68,7 +68,7 @@ docker compose down -v
 docker ps -aq --filter "name=cc-remote" | xargs -r docker rm -f
 docker volume ls -q --filter "name=cc-remote" | xargs -r docker volume rm
 docker network rm cc-remote 2>/dev/null || true
-git fetch --tags && git checkout v1.0.0-alpha.2
+git fetch --tags && git checkout v1.0.0-alpha.1
 ./setup.sh
 ```
 
