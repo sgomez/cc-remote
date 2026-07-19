@@ -13,7 +13,27 @@ export type GitHubTokenCredential = {
   expiresAt: Date;
 };
 
+/** An installation of the GitHub App, listing which repositories were granted. */
+export type GitHubInstallation = {
+  id: number;
+  account: {
+    login: string;
+    avatarUrl: string;
+    type: "User" | "Organization";
+  };
+  /** Whether the grant covers all repositories or an explicit selection. */
+  repositorySelection: "all" | "selected";
+  /** Full `owner/repo` names granted. Empty for "all" (the set is unbounded). */
+  repositories: string[];
+  /** URL on github.com to review or change the installation. */
+  htmlUrl: string;
+};
+
 export interface GitHubTokenIssuer {
   /** Obtain a credential scoped to `repo` (owner/repo). */
   issueToken(repo: string): Promise<GitHubTokenCredential>;
+
+  /** List every installation of the App, with granted repositories. Uses the
+   *  App's own credentials — no signed-in user token is involved. */
+  listInstallations(): Promise<GitHubInstallation[]>;
 }
