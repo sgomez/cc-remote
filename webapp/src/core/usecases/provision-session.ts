@@ -5,6 +5,7 @@
 
 import type { Account } from "../domain/account";
 import { accountConfigVolumeName } from "../domain/account";
+import type { CommitIdentity } from "../domain/commit-identity";
 import { CloneFailedError } from "../domain/errors";
 import type { ProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
@@ -23,6 +24,7 @@ export type ProvisionSessionParams = {
   sessionUuid: string;
   permissionMode: string;
   brokerUrl: string;
+  commitIdentity: CommitIdentity;
 };
 
 export async function provisionSession(
@@ -72,6 +74,7 @@ export async function provisionSession(
       permissionMode: params.permissionMode,
       brokerSecret,
       brokerUrl: params.brokerUrl,
+      commitIdentity: params.commitIdentity,
     }),
     labels: buildSessionLabels(labelInput),
     accountConfigVolume: accountConfigVolumeName(account.id),

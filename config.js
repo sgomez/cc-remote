@@ -1,7 +1,6 @@
 const fs = require('fs');
 const readline = require('readline');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
 
 // Helper to prompt user
 const rl = readline.createInterface({
@@ -22,7 +21,7 @@ const question = (query) => new Promise((resolve) => rl.question(query, resolve)
 // discover it at runtime (`docker info` is blocked on the socket proxy, deliberately).
 // setup.sh CAN see the host, so it measures RAM/CPUs and passes them in here, and we
 // derive a default with no extra prompt — the same way the wizard already derives the
-// auth secret, PUID/PGID, git identity and permission mode.
+// auth secret, PUID/PGID and permission mode.
 //
 // THE ASSUMPTION THIS ENCODES, stated so you can disagree with it: about TWO Sessions
 // are memory-hot at the same time, and the control plane + host need ~1 GiB. This is a
@@ -151,24 +150,13 @@ async function main() {
     }
   }
 
-  // Resolve Git configurations from host globally
-  let gitName = config.git?.name || '';
-  let gitEmail = config.git?.email || '';
-
-  try {
-    if (!gitName) {
-      gitName = execSync('git config --global user.name', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    }
-  } catch (e) {}
-
-  try {
-    if (!gitEmail) {
-      gitEmail = execSync('git config --global user.email', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    }
-  } catch (e) {}
-
-  if (!gitName) gitName = 'Claude Remote Agent';
-  if (!gitEmail) gitEmail = 'agent@example.com';
+  // No git identity here. It used to be resolved from the host's global git
+  // config, but this wizard runs inside a throwaway node:22-slim container that
+  // never mounts ~/.gitconfig, so the lookup always failed and every deployment
+  // silently got the "Claude Remote Agent" fallback -- an address GitHub
+  // attributes to nobody. A Session's git author is now the Commit Identity of
+  // the signed-in user who provisions it, derived from their GitHub profile at
+  // create time. See docs/adr/0002-per-user-commit-identity.md.
 
   // Reuse a previously generated better-auth signing secret if we have one, otherwise
   // generate a new one. Stable across restarts, or every restart invalidates all
@@ -233,10 +221,6 @@ async function main() {
   // browser bootstrap screen in Phase 2 and stored in the Bootstrap File on the
   // persisted data volume, not in config.json or .env.
   const finalConfig = {
-    git: {
-      name: gitName,
-      email: gitEmail
-    },
     permissions: {
       mode: permissionMode
     },
@@ -295,8 +279,6 @@ async function main() {
   // containers mount named volumes exclusively.
   const envContent = [
     `# Auto-generated configuration by config.js`,
-    `GIT_USER_NAME="${gitName}"`,
-    `GIT_USER_EMAIL="${gitEmail}"`,
     `PERMISSION_MODE="${permissionMode}"`,
     `DOMAIN_NAME="${domain}"`,
     `BETTER_AUTH_URL="${betterAuthUrl}"`,

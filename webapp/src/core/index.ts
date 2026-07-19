@@ -16,6 +16,8 @@ export {
   validateBootstrapRecord,
   verifyClaimToken,
 } from "./domain/bootstrap";
+export type { CommitIdentity } from "./domain/commit-identity";
+export { buildCommitIdentity, githubNoreplyEmail } from "./domain/commit-identity";
 export * from "./domain/errors";
 export type { LoginContainer } from "./domain/login";
 export { buildLoginLabels, LOGIN_LABELS } from "./domain/login";

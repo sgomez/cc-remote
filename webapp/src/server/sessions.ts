@@ -7,7 +7,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { requireSession } from "~/adapters/auth";
+import { getCommitIdentity, requireSession } from "~/adapters/auth";
 import { createGitHubAppTokenIssuer } from "~/adapters/github/github-app-token-issuer";
 import { uuidGenerator } from "~/adapters/system";
 import { loadDeploymentConfig } from "~/config/deployment";
@@ -77,6 +77,7 @@ export const createSession = createServerFn({ method: "POST" })
       repo: data.repo,
       accountId: data.accountId,
       permissionMode: permissionMode(),
+      commitIdentity: await getCommitIdentity(getRequest().headers),
     });
     return { name: session.name };
   });
@@ -122,6 +123,10 @@ export const resetSession = createServerFn({ method: "POST" })
     await reset({
       name: data.name,
       permissionMode: permissionMode(),
+      // The identity of whoever performs the reset, not the original creator:
+      // container env is fixed at create time, so a reset is the only point at
+      // which a Session's Commit Identity can change.
+      commitIdentity: await getCommitIdentity(getRequest().headers),
     });
   });
 

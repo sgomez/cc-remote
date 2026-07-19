@@ -22,6 +22,24 @@ export class MissingAccountFieldError extends DomainError {
   }
 }
 
+/**
+ * The authenticated user is missing a field the Commit Identity is built from.
+ * Both are invariants by the time a Session can be created (the fail-closed
+ * allow-list rejects a sign-in without `githubLogin`, and better-auth writes
+ * `accountId` on every sign-in), so this means the delivery layer read the wrong
+ * field. Fail loud rather than author commits as nobody.
+ */
+export class InvalidCommitIdentityError extends DomainError {
+  constructor(field: string, detail?: string) {
+    super(
+      "invalid_commit_identity",
+      `Cannot build a commit identity: ${field} is missing or invalid` +
+        (detail ? ` (${detail})` : "") +
+        ". Sign out and sign in again to refresh the GitHub profile.",
+    );
+  }
+}
+
 export class AccountNotFoundError extends DomainError {
   constructor(id: string) {
     super("account_not_found", `Account not found: ${id}`);

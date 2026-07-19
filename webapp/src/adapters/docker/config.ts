@@ -47,8 +47,6 @@ export type DockerAdapterConfig = {
   /** CPU quota in nano-CPUs (1 core = 1e9). Omitted / 0 = no limit. */
   nanoCpus?: number;
   restartPolicy: string;
-  gitUserName?: string;
-  gitUserEmail?: string;
 };
 
 /**
@@ -174,7 +172,5 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): DockerAdapt
     memoryLimit: memory > 0 ? memory : undefined,
     nanoCpus: nanoCpus > 0 ? nanoCpus : undefined,
     restartPolicy: env.AGENT_RESTART_POLICY || "unless-stopped",
-    gitUserName: env.GIT_USER_NAME || undefined,
-    gitUserEmail: env.GIT_USER_EMAIL || undefined,
   };
 }

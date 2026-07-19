@@ -58,7 +58,11 @@ function setup(seed: Account[] = [account()]) {
   return { accounts, engine, ids, cloneIssuer, secretRegistry, create };
 }
 
-const input = { name: "s1", repo: "o/r", accountId: "acc-1" };
+const commitIdentity = {
+  name: "Sergio Gómez",
+  email: "580701+sgomez@users.noreply.github.com",
+};
+const input = { name: "s1", repo: "o/r", accountId: "acc-1", commitIdentity };
 
 describe("create-session", () => {
   let ctx: ReturnType<typeof setup>;

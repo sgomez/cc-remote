@@ -7,6 +7,7 @@
 // replace the static token.
 
 import type { Account } from "./account";
+import type { CommitIdentity } from "./commit-identity";
 import type { ProviderType } from "./provider-type";
 import { buildAnthropicEnv } from "./seeding";
 
@@ -29,6 +30,7 @@ export function buildSessionEnv(input: {
   permissionMode: string;
   brokerSecret: string;
   brokerUrl: string;
+  commitIdentity: CommitIdentity;
 }): Record<string, string> {
   return {
     GITHUB_REPO: input.repo,
@@ -37,6 +39,10 @@ export function buildSessionEnv(input: {
     PERMISSION_MODE: input.permissionMode,
     CC_BROKER_SECRET: input.brokerSecret,
     CC_BROKER_URL: input.brokerUrl,
+    // Only the Session commits. The clone helper (`git clone`) and the Login
+    // Container have no use for an author, so they never carry these.
+    GIT_USER_NAME: input.commitIdentity.name,
+    GIT_USER_EMAIL: input.commitIdentity.email,
     ...buildAnthropicEnv(input.type, input.account),
   };
 }

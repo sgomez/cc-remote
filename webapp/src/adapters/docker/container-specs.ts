@@ -40,12 +40,18 @@ function toEnvArray(env: Record<string, string>): string[] {
   return Object.entries(env).map(([k, v]) => `${k}=${v}`);
 }
 
-/** Infra env every container gets, merged UNDER the domain env (domain wins). */
+/**
+ * Infra env every container gets, merged UNDER the domain env (domain wins).
+ *
+ * Deliberately carries no git identity. `GIT_USER_NAME`/`GIT_USER_EMAIL` used to
+ * be deployment-wide values set here for all five builders; they are now the
+ * Commit Identity of the user who provisioned the Session, supplied per-Session
+ * by `buildSessionEnv`. Do not reintroduce a fallback here: a second source
+ * would only ever win when the real identity is absent, which is exactly when
+ * committing should fail loudly instead of authoring as nobody.
+ */
 function infraEnv(config: DockerAdapterConfig): Record<string, string> {
-  const env: Record<string, string> = { PUID: config.puid, PGID: config.pgid };
-  if (config.gitUserName) env.GIT_USER_NAME = config.gitUserName;
-  if (config.gitUserEmail) env.GIT_USER_EMAIL = config.gitUserEmail;
-  return env;
+  return { PUID: config.puid, PGID: config.pgid };
 }
 
 function mergeEnv(base: Record<string, string>, override: Record<string, string>): string[] {

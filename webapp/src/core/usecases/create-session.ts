@@ -2,6 +2,7 @@
 // container, then main agent container), mirroring the legacy lifecycle. The
 // container carries the `cc-remote-account-id` label (replacing provider-id).
 
+import type { CommitIdentity } from "../domain/commit-identity";
 import {
   AccountNotFoundError,
   AccountNotReadyError,
@@ -23,6 +24,8 @@ export type CreateSessionInput = {
   repo: string;
   accountId: string;
   permissionMode?: string;
+  /** Git author for this Session: the user provisioning it. */
+  commitIdentity: CommitIdentity;
 };
 
 export type CreateSessionDeps = {
@@ -68,6 +71,7 @@ export function makeCreateSession(deps: CreateSessionDeps) {
       sessionUuid: deps.ids.newId(),
       permissionMode: input.permissionMode ?? "auto",
       brokerUrl: deps.brokerUrl,
+      commitIdentity: input.commitIdentity,
     });
   };
 }

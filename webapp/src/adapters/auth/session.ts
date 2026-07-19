@@ -10,6 +10,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { buildCommitIdentity, type CommitIdentity } from "~/core";
 import { auth } from "./auth";
 
 export type AuthSession = Awaited<ReturnType<typeof auth.api.getSession>>;
@@ -43,4 +44,26 @@ export async function getGithubAccessToken(
     headers,
   });
   return result?.accessToken;
+}
+
+/**
+ * Commit Identity for the authenticated user: the git author every Session they
+ * provision commits as.
+ *
+ * The GitHub numeric id comes from better-auth's own `account.accountId`, which
+ * it writes from the provider profile on every sign-in — so it is already
+ * populated for existing users and needs no extra persisted field, no schema
+ * migration, and no re-login. `user.name` is likewise better-auth's default
+ * mapping of `profile.name || profile.login`.
+ */
+export async function getCommitIdentity(headers: Headers): Promise<CommitIdentity> {
+  const session = await requireSession(headers);
+  const accounts = await auth.api.listUserAccounts({ headers });
+  const github = accounts?.find((a) => a.providerId === "github");
+
+  return buildCommitIdentity({
+    name: session.user.name,
+    githubId: github?.accountId ?? "",
+    githubLogin: (session.user as { githubLogin?: string }).githubLogin ?? "",
+  });
 }

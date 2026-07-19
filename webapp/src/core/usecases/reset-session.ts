@@ -3,6 +3,7 @@
 // remote-control pairing is recreated). Repo and Account are read from the
 // existing container's labels. Refuses any container lacking the session label.
 
+import type { CommitIdentity } from "../domain/commit-identity";
 import { AccountNotFoundError, SessionNotFoundError } from "../domain/errors";
 import { requireProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
@@ -17,6 +18,12 @@ import { provisionSession } from "./provision-session";
 export type ResetSessionInput = {
   name: string;
   permissionMode?: string;
+  /**
+   * Git author for the re-provisioned Session: the user performing the reset,
+   * not necessarily the one who created it. The env is fixed at container-create
+   * time, so a reset is the only point at which a Session's identity can change.
+   */
+  commitIdentity: CommitIdentity;
 };
 
 export type ResetSessionDeps = {
@@ -51,6 +58,7 @@ export function makeResetSession(deps: ResetSessionDeps) {
       sessionUuid: deps.ids.newId(),
       permissionMode: input.permissionMode ?? "auto",
       brokerUrl: deps.brokerUrl,
+      commitIdentity: input.commitIdentity,
     });
   };
 }

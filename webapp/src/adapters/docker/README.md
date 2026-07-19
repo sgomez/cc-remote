@@ -117,7 +117,12 @@ Read by `configFromEnv` (deployment infra; **not** provider/account data):
 | `AGENT_MEMORY_LIMIT` | — | `Memory` **and** `MemorySwap`. Human units (`512m`, `2g`, `1.5g`) or raw bytes; min 6m (Docker's); `0`/unset = no limit |
 | `AGENT_CPU_LIMIT` | — | `NanoCpus`, in cores (`1.5` → 1_500_000_000); `0`/unset = no limit |
 | `AGENT_RESTART_POLICY` | `unless-stopped` | restart policy |
-| `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | git identity injected into containers |
+
+There is deliberately no git-identity variable here. `GIT_USER_NAME`/`GIT_USER_EMAIL`
+are the **Commit Identity** of the signed-in user who provisioned the Session, built
+in `core/domain/commit-identity.ts` and carried per-Session through the domain env,
+not a deployment-wide setting this adapter contributes. See
+`docs/adr/0002-per-user-commit-identity.md`.
 
 ### Resource limits
 

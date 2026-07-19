@@ -48,7 +48,14 @@ echo " [Info] Running as non-root user node (UID: $(id -u), GID: $(id -g))"
 
 export PATH="/home/node/.local/bin:$PATH"
 
-# Configure Git identity inside the container
+# Commit Identity: the git author this container commits as. web-manager sets it
+# per-Session from the GitHub profile of the signed-in user who provisioned it,
+# so it is NOT a deployment-wide value and is re-applied on every start from the
+# container's env (a reset is what changes it).
+#
+# The guards stay because not every container is a Session: a Login Container has
+# no Session identity and never commits, so it legitimately arrives with neither
+# variable set. A Session always carries both.
 if [ -n "$GIT_USER_NAME" ]; then
     git config --global user.name "$GIT_USER_NAME"
 fi

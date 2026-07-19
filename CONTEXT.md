@@ -48,6 +48,9 @@ An ephemeral container created during registration of an `oauth` Account. It mou
 ### Session
 A work environment: one agent container plus its own workspace volume, created from a repository and an Account. Docker itself is the source of truth for Sessions: they exist exactly as long as their labelled container exists, and the database stores nothing about them. Every Session offers a web terminal; Sessions whose Account's Provider Type supports it additionally run Remote Control.
 
+### Commit Identity
+The git author a Session's agent commits as: the authenticated user who provisioned that Session, never a deployment-wide value. The email is always the GitHub `noreply` address derived from the account's numeric id, never the account's real address, because that is the only form GitHub reliably attributes to the profile and the only one immune to a push being rejected for exposing a private address. It is fixed in the Session's environment when the container is created, so it stays frozen until the Session is recreated: a reset adopts the identity of whoever performs it. Containers that never commit (clone helpers, Login Containers) carry no Commit Identity at all.
+
 ### GitHub App
 Authenticates the deployment against GitHub as a single entity rather than impersonating a user. A GitHub App replaces the previous OAuth App: its user-to-server flow uses the same OAuth endpoints and is handled by the same better-auth `github` provider, but the `repo` scope is removed from the authorization URL because GitHub Apps ignore scope — permissions come from the App's own configuration. The App owns a private key that is used server-side to mint installation tokens, and this key never enters any agent container.
 

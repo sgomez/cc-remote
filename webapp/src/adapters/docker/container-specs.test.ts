@@ -20,8 +20,6 @@ const config: DockerAdapterConfig = {
   pgid: "1000",
   pidsLimit: 4096,
   restartPolicy: "unless-stopped",
-  gitUserName: "Bot",
-  gitUserEmail: "bot@example.com",
 };
 
 const sessionSpec: SessionContainerSpec = {
@@ -35,6 +33,8 @@ const sessionSpec: SessionContainerSpec = {
     ANTHROPIC_BASE_URL: "https://x",
     CC_BROKER_SECRET: "bs-1",
     CC_BROKER_URL: "http://web-manager:4001",
+    GIT_USER_NAME: "Sergio Gómez",
+    GIT_USER_EMAIL: "580701+sgomez@users.noreply.github.com",
   },
   labels: { "cc-remote-session": "true", "cc-remote-session-name": "demo" },
   accountConfigVolume: "cc-remote-account-acc-1",
@@ -114,7 +114,6 @@ describe("buildSessionCreateOptions — config-volume account", () => {
     const env = opts.Env ?? [];
     expect(env).toContain("PUID=1000");
     expect(env).toContain("PGID=1000");
-    expect(env).toContain("GIT_USER_NAME=Bot");
     expect(env).toContain("CC_BROKER_SECRET=bs-1");
     expect(env).toContain("CC_BROKER_URL=http://web-manager:4001");
     expect(env).toContain("ANTHROPIC_BASE_URL=https://x");
@@ -124,6 +123,12 @@ describe("buildSessionCreateOptions — config-volume account", () => {
   it("injects NO durable GITHUB_TOKEN into the Session container", () => {
     const env = opts.Env ?? [];
     expect(env.some((e) => e.startsWith("GITHUB_TOKEN="))).toBe(false);
+  });
+
+  it("carries the per-Session Commit Identity from the domain env", () => {
+    const env = opts.Env ?? [];
+    expect(env).toContain("GIT_USER_NAME=Sergio Gómez");
+    expect(env).toContain("GIT_USER_EMAIL=580701+sgomez@users.noreply.github.com");
   });
 
   it("carries the hardening flags and network", () => {
@@ -219,6 +224,45 @@ describe("buildHasCredentialsCreateOptions", () => {
     const script = (opts.Cmd ?? [])[2] ?? "";
     expect(script).toContain(`test -f "/vol/${CREDENTIALS_MARKER}"`);
     expect(opts.HostConfig?.Binds).toEqual(["cc-remote-account-acc-1:/vol:ro"]);
+  });
+});
+
+describe("commit identity is per-Session, never deployment-wide", () => {
+  // GIT_USER_NAME/GIT_USER_EMAIL used to come from infraEnv, so all five builders
+  // got a single deployment-wide identity — and its host-derived default never
+  // resolved, so every agent committed as a fake "Claude Remote Agent" that
+  // GitHub attributed to nobody. The identity is now the provisioning user's,
+  // supplied per-Session through the domain env. Nothing else may carry one.
+  const noIdentitySpecs = [
+    [
+      "clone",
+      buildCloneCreateOptions(
+        {
+          sessionName: "demo",
+          repo: "octocat/hello",
+          accountId: "acc-1",
+          workspaceVolume: "cc-remote-workspace-demo",
+          env: {},
+          labels: {},
+        },
+        config,
+      ),
+    ],
+    ["login", buildLoginCreateOptions(loginSpec, config)],
+    ["seed", buildSeedCreateOptions("vol", ".claude.json", "{}", config)],
+    ["has-credentials", buildHasCredentialsCreateOptions("vol", config)],
+  ] as const;
+
+  it.each(noIdentitySpecs)("%s container carries no git identity", (_, opts) => {
+    const env = opts.Env ?? [];
+    expect(env.some((e) => e.startsWith("GIT_USER_NAME="))).toBe(false);
+    expect(env.some((e) => e.startsWith("GIT_USER_EMAIL="))).toBe(false);
+  });
+
+  it("the adapter contributes no identity of its own when the domain supplies none", () => {
+    const opts = buildSessionCreateOptions({ ...sessionSpec, env: {} }, config);
+    const env = opts.Env ?? [];
+    expect(env.some((e) => e.startsWith("GIT_USER_"))).toBe(false);
   });
 });
 

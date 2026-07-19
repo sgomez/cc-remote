@@ -86,8 +86,11 @@ services:
       - AGENT_CPU_LIMIT=${AGENT_CPU_LIMIT:-2}
       - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
       - PERMISSION_MODE=${PERMISSION_MODE:-auto}
-      - GIT_USER_NAME=${GIT_USER_NAME}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL}
+      # No GIT_USER_NAME/GIT_USER_EMAIL: a Session's git author is the Commit
+      # Identity of the signed-in user who provisions it, derived per-Session
+      # from their GitHub profile. Reintroducing a deployment-wide value here
+      # would only ever apply when the real identity is missing, which is
+      # exactly when committing must fail instead of authoring as nobody.
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       # SQLite (domain + better-auth tables) on a persisted named volume so

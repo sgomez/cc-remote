@@ -6,6 +6,7 @@ export { isLoginAllowed, parseAllowList } from "./allow-list";
 export { type Auth, auth } from "./auth";
 export {
   type AuthSession,
+  getCommitIdentity,
   getGithubAccessToken,
   getSession,
   requireSession,

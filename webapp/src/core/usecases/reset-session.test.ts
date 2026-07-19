@@ -9,6 +9,11 @@ import { AccountNotFoundError, SessionNotFoundError } from "../domain/errors";
 import { workspaceVolumeName } from "../domain/session";
 import { makeResetSession } from "./reset-session";
 
+const commitIdentity = {
+  name: "Sergio Gómez",
+  email: "580701+sgomez@users.noreply.github.com",
+};
+
 function account(overrides: Partial<Account> = {}): Account {
   return {
     id: "acc-1",
@@ -46,19 +51,21 @@ describe("reset-session", () => {
   });
 
   it("refuses a session without the label", async () => {
-    await expect(ctx.reset({ name: "ghost" })).rejects.toThrow(SessionNotFoundError);
+    await expect(ctx.reset({ name: "ghost", commitIdentity })).rejects.toThrow(
+      SessionNotFoundError,
+    );
   });
 
   it("throws when the labelled account no longer exists", async () => {
     ctx.engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "gone" });
-    await expect(ctx.reset({ name: "s" })).rejects.toThrow(AccountNotFoundError);
+    await expect(ctx.reset({ name: "s", commitIdentity })).rejects.toThrow(AccountNotFoundError);
   });
 
   it("recreates the session with a fresh SESSION_UUID from the labelled repo/account", async () => {
     ctx.engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "acc-1" });
     await ctx.engine.createVolume(workspaceVolumeName("s"));
 
-    const session = await ctx.reset({ name: "s" });
+    const session = await ctx.reset({ name: "s", commitIdentity });
 
     expect(session).toEqual({ name: "s", repo: "o/r", accountId: "acc-1", status: "running" });
     expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
