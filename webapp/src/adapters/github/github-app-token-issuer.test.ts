@@ -208,9 +208,90 @@ describe("createGitHubAppTokenIssuer.listInstallations", () => {
 
     expect(fetchSpy).toHaveBeenCalled();
     const [url, opts] = fetchSpy.mock.calls[0];
-    expect(url).toBe("https://api.github.com/app/installations");
+    expect(url).toBe("https://api.github.com/app/installations?per_page=100&page=1");
     expect(opts.headers.Authorization).toMatch(/^Bearer /);
     expect(opts.headers.Accept).toBe("application/vnd.github+json");
+  });
+
+  it("follows pagination when there are more than 100 installations", async () => {
+    // A full page of 100 "all" installations (no per-installation repo fetch),
+    // then a short page of 1 signals the end of the list.
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      id: i + 1,
+      account: { login: `acct${i}`, avatar_url: "", type: "User" as const },
+      repository_selection: "all" as const,
+      html_url: "",
+    }));
+    fetchSpy.mockResolvedValueOnce(installationsResponse(fullPage)).mockResolvedValueOnce(
+      installationsResponse([
+        {
+          id: 101,
+          account: { login: "acct100", avatar_url: "", type: "User" },
+          repository_selection: "all",
+          html_url: "",
+        },
+      ]),
+    );
+
+    const installations = await issuer.listInstallations();
+
+    expect(installations).toHaveLength(101);
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      "https://api.github.com/app/installations?per_page=100&page=1",
+    );
+    expect(fetchSpy.mock.calls[1][0]).toBe(
+      "https://api.github.com/app/installations?per_page=100&page=2",
+    );
+  });
+
+  it("follows pagination when a selected installation grants more than 100 repositories", async () => {
+    const firstRepoPage = Array.from({ length: 100 }, (_, i) => ({
+      full_name: `o/r${i}`,
+    }));
+    fetchSpy
+      .mockResolvedValueOnce(
+        installationsResponse([
+          {
+            id: 7,
+            account: { login: "o", avatar_url: "", type: "Organization" },
+            repository_selection: "selected",
+            html_url: "",
+          },
+        ]),
+      )
+      // mint installation token
+      .mockResolvedValueOnce({
+        status: 201,
+        ok: true,
+        json: async () => ({ token: "inst-token" }),
+        text: async () => "",
+      })
+      // repositories page 1 (full)
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ repositories: firstRepoPage }),
+        text: async () => "",
+      })
+      // repositories page 2 (short — ends the list)
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ repositories: [{ full_name: "o/r100" }] }),
+        text: async () => "",
+      });
+
+    const installations = await issuer.listInstallations();
+
+    expect(installations[0].repositories).toHaveLength(101);
+    expect(installations[0].repositories).toContain("o/r100");
+    // page 1 then page 2 of the repositories endpoint.
+    expect(fetchSpy.mock.calls[2][0]).toBe(
+      "https://api.github.com/installation/repositories?per_page=100&page=1",
+    );
+    expect(fetchSpy.mock.calls[3][0]).toBe(
+      "https://api.github.com/installation/repositories?per_page=100&page=2",
+    );
   });
 
   it("fetches repositories when repository_selection is 'selected'", async () => {

@@ -14,6 +14,7 @@ import { loadDeploymentConfig } from "~/config/deployment";
 
 const REPOS_URL =
   "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member";
+const REPOS_PER_PAGE = 100;
 
 /**
  * GitHub App token issuer for listing installations. Minted lazily so a
@@ -53,18 +54,23 @@ export const listRepos = createServerFn({ method: "GET" }).handler(async (): Pro
       const token = await getGithubAccessToken(headers);
       if (token) {
         try {
-          const res = await fetch(REPOS_URL, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: "application/vnd.github+json",
-              "User-Agent": "cc-remote-web-manager",
-            },
-          });
-          if (res.ok) {
+          // Paginate: /user/repos returns at most 100 per page, and a user with
+          // more than 100 repos would otherwise get a truncated autocomplete.
+          // Follow pages until a short page ends the list.
+          for (let page = 1; ; page++) {
+            const res = await fetch(`${REPOS_URL}&page=${page}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/vnd.github+json",
+                "User-Agent": "cc-remote-web-manager",
+              },
+            });
+            if (!res.ok) break;
             const data = (await res.json()) as Array<{ full_name?: unknown }>;
             for (const r of data) {
               if (typeof r.full_name === "string") repos.add(r.full_name);
             }
+            if (data.length < REPOS_PER_PAGE) break;
           }
         } catch {
           // Ignore — the autocomplete degrades gracefully to whatever

@@ -139,27 +139,38 @@ export function createGitHubAppTokenIssuer(config: GitHubAppTokenIssuerConfig): 
     async listInstallations(): Promise<GitHubInstallation[]> {
       const jwt = signAppJwt(config.appId, privateKeyPem);
 
-      const res = await fetch("https://api.github.com/app/installations", {
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(
-          `GitHub App: failed to list installations (HTTP ${res.status})${body ? `: ${body}` : ""}`,
-        );
-      }
-
-      const installations = (await res.json()) as Array<{
+      // Paginate: GitHub caps list endpoints at 30 items by default, so an App
+      // installed on more than 30 accounts would silently lose the tail. Ask for
+      // 100 per page and follow the pages until a short page ends the list.
+      const installations: Array<{
         id: number;
         account: { login: string; avatar_url: string; type: "User" | "Organization" };
         repository_selection: "all" | "selected";
         html_url: string;
-      }>;
+      }> = [];
+      for (let page = 1; ; page++) {
+        const res = await fetch(
+          `https://api.github.com/app/installations?per_page=100&page=${page}`,
+          {
+            headers: {
+              Authorization: `Bearer ${jwt}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+          },
+        );
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(
+            `GitHub App: failed to list installations (HTTP ${res.status})${body ? `: ${body}` : ""}`,
+          );
+        }
+
+        const batch = (await res.json()) as typeof installations;
+        installations.push(...batch);
+        if (batch.length < 100) break;
+      }
 
       const result: GitHubInstallation[] = [];
 
@@ -186,22 +197,32 @@ export function createGitHubAppTokenIssuer(config: GitHubAppTokenIssuerConfig): 
 
           if (tokenRes.ok) {
             const tokenData = (await tokenRes.json()) as { token: string };
-            const reposRes = await fetch("https://api.github.com/installation/repositories", {
-              headers: {
-                Authorization: `Bearer ${tokenData.token}`,
-                Accept: "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-              },
-            });
+            // Paginate the granted repositories too — an installation with more
+            // than 30 selected repos would otherwise report a truncated list,
+            // and a repo missing from it is wrongly rejected at session create.
+            for (let page = 1; ; page++) {
+              const reposRes = await fetch(
+                `https://api.github.com/installation/repositories?per_page=100&page=${page}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${tokenData.token}`,
+                    Accept: "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                },
+              );
 
-            if (reposRes.ok) {
+              // If repository listing fails for one installation, skip it and
+              // continue with the rest — an empty (or partial) repo list is
+              // still informative.
+              if (!reposRes.ok) break;
+
               const reposData = (await reposRes.json()) as {
                 repositories: Array<{ full_name: string }>;
               };
               repos.push(...reposData.repositories.map((r) => r.full_name));
+              if (reposData.repositories.length < 100) break;
             }
-            // If repository listing fails for one installation, skip it and
-            // continue with the rest — an empty repo list is still informative.
           }
         }
 
