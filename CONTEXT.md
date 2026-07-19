@@ -7,6 +7,20 @@ This document defines the core domain concepts and terminology for the `cc-remot
 ### Setup & Configuration Module
 The host-side half of configuration: the wizard that gathers the facts only the host can supply and compiles them into the environment the stack starts with (`config.json` and compiled `.env`). It owns infrastructure and host-derived values — public domain, reverse proxy toggle and ports, host UID/GID, git identity, the auth signing secret, and the agent resource caps — and nothing else. Everything about the deployment's GitHub identity belongs to Deployment Bootstrap instead.
 
+### Deployment Setting
+A configuration value of the deployment that an operator changes from the browser while the stack is running, held in the `setting` table. A value qualifies only if it is a standing preference the operator may reasonably revisit, and if honouring a change needs nothing more than the next Session picking it up. The default Permission Mode is the first one.
+
+Two kinds of value are deliberately not Deployment Settings. Those that can only be decided before the process starts (ports, public domain, the auth signing secret, host UID/GID, the agents network) stay with the Setup & Configuration Module. So do those derived from facts only the host can see, such as the agent resource caps, which the Setup & Configuration Module computes from the machine's real memory and cores: web-manager cannot ask Docker about the host, so it has no basis on which to offer a better number than the installer already did.
+
+A Deployment Setting has exactly one source. Nothing outside the `setting` table can supply or override it, so there is never a precedence question between the table and the deployment's environment. A setting the operator has never touched has no stored value, and a default defined in code applies.
+
+Because a container's configuration is fixed when the container is created, editing a Deployment Setting never affects a running Session. It reaches a Session only when that Session is created or reset.
+
+### Permission Mode
+How much a Session's agent may do without asking: `auto`, where Claude's own safety classifier decides, or `bypassPermissions`, where nothing is filtered. It is a property of a Session, chosen when the Session is created and frozen for that container's life, and it survives a reset because the Session's container records it. An Account has no Permission Mode: two Sessions of the same Account may run in different modes at the same time, so no shared per-Account state may hold it.
+
+Its default for new Sessions is a Deployment Setting. Running unattended in `bypassPermissions` is a deliberate trade the deployment makes: what bounds the damage is the container, which mounts no host path, carries no durable GitHub credential, and can reach only its own repository.
+
 ### Deployment Bootstrap
 The act of giving a running but not-yet-usable deployment its GitHub identity, performed from the browser rather than the console. It exists because registering a GitHub App from a manifest requires a browser, and on a headless VPS the browser is the only client with a natural route to the deployment. It either registers a brand-new GitHub App via the App Manifest Flow or accepts the details of an existing one, and ends by recording them in the Bootstrap File.
 
