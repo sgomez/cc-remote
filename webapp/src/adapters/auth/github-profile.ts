@@ -28,11 +28,8 @@ export function mapGithubProfileToUser(profile: GithubProfile): {
   githubLogin: string;
   email: string;
 } {
-  console.log("[auth] mapGithubProfileToUser incoming profile:", JSON.stringify(profile));
-  const mapped = {
+  return {
     githubLogin: profile.login,
     email: profile.email || `${profile.login}@users.noreply.github.com`,
   };
-  console.log("[auth] mapGithubProfileToUser mapped to:", JSON.stringify(mapped));
-  return mapped;
 }
