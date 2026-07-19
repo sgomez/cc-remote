@@ -662,7 +662,8 @@ h1 a.path:hover {
    global full-width rule doesn't stretch them (that pushed the account picker's
    radio onto its own full-width row above the label). */
 .field input:not([type="radio"]):not([type="checkbox"]),
-.field select {
+.field select,
+.input {
   width: 100%;
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid var(--card-border);
@@ -675,7 +676,8 @@ h1 a.path:hover {
   outline: none;
 }
 .field input:not([type="radio"]):not([type="checkbox"]):focus,
-.field select:focus {
+.field select:focus,
+.input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-glow);
   background: rgba(15, 23, 42, 0.8);

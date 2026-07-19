@@ -6,6 +6,7 @@
 /** Subset of the GitHub profile better-auth passes to `mapProfileToUser`. */
 export interface GithubProfile {
   login: string;
+  email?: string | null;
 }
 
 /**
@@ -23,6 +24,15 @@ export const githubAdditionalFields = {
 } as const;
 
 /** Maps the verified GitHub profile onto the persisted `githubLogin` field. */
-export function mapGithubProfileToUser(profile: GithubProfile): { githubLogin: string } {
-  return { githubLogin: profile.login };
+export function mapGithubProfileToUser(profile: GithubProfile): {
+  githubLogin: string;
+  email: string;
+} {
+  console.log("[auth] mapGithubProfileToUser incoming profile:", JSON.stringify(profile));
+  const mapped = {
+    githubLogin: profile.login,
+    email: profile.email || `${profile.login}@users.noreply.github.com`,
+  };
+  console.log("[auth] mapGithubProfileToUser mapped to:", JSON.stringify(mapped));
+  return mapped;
 }

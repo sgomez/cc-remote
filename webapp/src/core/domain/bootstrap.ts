@@ -216,6 +216,7 @@ export function buildManifest(baseUrl: string): GithubAppManifest {
     default_permissions: {
       contents: "write",
       pull_requests: "write",
+      emails: "read",
     },
   };
 }

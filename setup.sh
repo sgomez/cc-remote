@@ -30,6 +30,17 @@ elif command -v sysctl >/dev/null 2>&1; then
 fi
 HOST_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
 
+# Parse arguments: extract --dev flag
+CONFIG_ARGS=()
+DEV_MODE=false
+for arg in "$@"; do
+  if [ "$arg" = "--dev" ]; then
+    DEV_MODE=true
+  else
+    CONFIG_ARGS+=("$arg")
+  fi
+done
+
 # Run the config script inside a lightweight Node container
 docker run --rm -it \
   -v "$(pwd)":/app \
@@ -38,7 +49,7 @@ docker run --rm -it \
   -e HOST_GID="$(id -g)" \
   -e HOST_MEM_MB="${HOST_MEM_MB}" \
   -e HOST_CPUS="${HOST_CPUS}" \
-  node:22-slim node config.js "$@"
+  node:22-slim node config.js "${CONFIG_ARGS[@]}"
 
 # Nothing to prepare on the host: agent containers mount named Docker volumes
 # exclusively (workspace per Session, config per Account), the web-manager keeps
@@ -50,8 +61,13 @@ if [ $? -eq 0 ] && [ -f .env ]; then
   echo -e -n "${GREEN}Do you want to build and start the Docker container now?${NC} [Y/n]: "
   read -r user_input
   if [ -z "$user_input" ] || [[ "$user_input" =~ ^[yY]([eE][sS])?$ ]]; then
-    echo -e "${BLUE}[Info] Starting Docker containers using docker compose...${NC}"
-    docker compose up -d --build
+    if [ "$DEV_MODE" = true ]; then
+      echo -e "${BLUE}[Info] Starting Docker containers in DEVELOPMENT mode using docker compose...${NC}"
+      docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d
+    else
+      echo -e "${BLUE}[Info] Starting Docker containers using docker compose...${NC}"
+      docker compose up -d --build
+    fi
     if [ $? -eq 0 ]; then
       echo -e "${GREEN}[Success] Container started! Run 'docker compose logs -f' to see output.${NC}"
     else
@@ -59,7 +75,11 @@ if [ $? -eq 0 ] && [ -f .env ]; then
     fi
   else
     echo -e "${BLUE}Setup complete! You can start the agent later by running:${NC}"
-    echo -e "  docker compose up -d --build"
+    if [ "$DEV_MODE" = true ]; then
+      echo -e "  docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d"
+    else
+      echo -e "  docker compose up -d --build"
+    fi
   fi
 fi
 echo ""

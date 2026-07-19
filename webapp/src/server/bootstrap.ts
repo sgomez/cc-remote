@@ -93,6 +93,9 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
       // File doesn't exist or can't be read.
     }
     if (!verifyClaimTokenPure(stored, data.token)) {
+      console.warn(
+        `[bootstrap] Claim token verification failed. Stored token: ${stored ? "present" : "missing"}, Provided token length: ${data.token?.length || 0}`,
+      );
       return { ok: false, errors: ["Invalid or expired claim token."] };
     }
 
@@ -116,7 +119,11 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
         // Override the allow-list from the form submission; keep everything
         // else from the manifest exchange.
         record.allowedGithubUsers = allowedGithubUsers;
-      } catch {
+      } catch (err) {
+        console.error(
+          `[bootstrap] Failed to read manifest result file for key: ${data.manifestKey}`,
+          err,
+        );
         return {
           ok: false,
           errors: [
@@ -141,6 +148,7 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
     // configuration that would crash the process is never persisted.
     const errors = validateBootstrapRecord(record);
     if (errors.length > 0) {
+      console.error("[bootstrap] Bootstrap configuration validation failed:", errors);
       return { ok: false, errors };
     }
 
@@ -151,6 +159,9 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
 
     // Restrictive permissions: the file holds the App private key.
     writeFileSync(BOOTSTRAP_FILE, JSON.stringify(record, null, 2), { mode: 0o600 });
+    console.log(
+      "[bootstrap] Configuration saved successfully. Exiting process to trigger container restart...",
+    );
 
     // Exit cleanly so the restart policy brings the container back with the
     // new configuration loaded. The setTimeout gives the framework a tick to
@@ -168,12 +179,9 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
  * Exposes the deployment's base URL from config, which is the only dynamic
  * input needed to build the manifest.
  */
-export const getManifestRegistrationUrl = createServerFn({ method: "GET" }).handler(async () => {
+export const fetchManifest = createServerFn({ method: "GET" }).handler(async () => {
   const config = loadDeploymentConfig();
-  const manifest = buildManifest(config.betterAuthUrl);
-  const manifestJson = JSON.stringify(manifest);
-  const encoded = encodeURIComponent(manifestJson);
-  return `https://github.com/settings/apps/new?manifest=${encoded}`;
+  return buildManifest(config.betterAuthUrl);
 });
 
 /**

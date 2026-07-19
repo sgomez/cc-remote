@@ -1,0 +1,13 @@
+services:
+  web-manager:
+    # Run in development mode using Vite dev server (watching and HMR enabled)
+    command: pnpm -F cc-remote-webapp dev --host 0.0.0.0
+    volumes:
+      # Bind mount the workspace code
+      - .:/app
+      # Guard container node_modules from being overwritten by the host
+      - /app/node_modules
+      - /app/webapp/node_modules
+      # Guard built/temp outputs
+      - /app/webapp/.output
+      - /app/webapp/.tanstack

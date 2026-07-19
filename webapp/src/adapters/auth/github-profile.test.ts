@@ -3,8 +3,15 @@ import { describe, expect, it } from "vitest";
 import { githubAdditionalFields, mapGithubProfileToUser } from "./github-profile";
 
 describe("mapGithubProfileToUser", () => {
-  it("maps the GitHub login onto githubLogin", () => {
-    expect(mapGithubProfileToUser({ login: "sgomez" })).toEqual({ githubLogin: "sgomez" });
+  it("maps the GitHub login onto githubLogin and synthesizes email if missing", () => {
+    expect(mapGithubProfileToUser({ login: "sgomez" })).toEqual({
+      githubLogin: "sgomez",
+      email: "sgomez@users.noreply.github.com",
+    });
+    expect(mapGithubProfileToUser({ login: "sgomez", email: "sgomez@example.com" })).toEqual({
+      githubLogin: "sgomez",
+      email: "sgomez@example.com",
+    });
   });
 });
 

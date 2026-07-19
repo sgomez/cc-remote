@@ -7,6 +7,7 @@
 // This module is the config the CLI loads (`--config src/adapters/auth/auth.ts`)
 // and the handler the TSS catch-all route delegates to.
 
+import "../../config/bootstrap-env";
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { tanstackStartCookies } from "better-auth/tanstack-start";

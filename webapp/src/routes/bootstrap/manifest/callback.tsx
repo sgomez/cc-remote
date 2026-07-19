@@ -20,8 +20,8 @@ import { exchangeManifestCode } from "~/server/bootstrap";
 
 export const Route = createFileRoute("/bootstrap/manifest/callback")({
   loader: async ({ location }) => {
-    const params = new URLSearchParams(location.search);
-    const code = params.get("code");
+    const search = location.search as Record<string, unknown>;
+    const code = search?.code as string | undefined;
 
     if (!code) {
       throw redirect({ to: "/bootstrap" });

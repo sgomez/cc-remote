@@ -19,7 +19,7 @@ import { createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   fetchDeploymentState,
-  getManifestRegistrationUrl,
+  fetchManifest,
   loadManifestResult,
   saveBootstrapConfig,
   verifyClaimTokenServerFn,
@@ -33,8 +33,8 @@ export const Route = createFileRoute("/bootstrap")({
     // When a manifest key is present from the App Manifest Flow callback,
     // load the pre-filled data on the server so the form renders immediately
     // without an extra client-side fetch.
-    const params = new URLSearchParams(String(location.search).replace(/^\?/, ""));
-    const key = params.get("manifest");
+    const search = location.search as Record<string, unknown>;
+    const key = search?.manifest as string | undefined;
     if (key) {
       const result = await loadManifestResult({ data: { key } });
       if (result.ok) {
@@ -68,14 +68,19 @@ function BootstrapPage() {
   };
 
   const { search } = useLocation();
-  const params = new URLSearchParams(String(search).replace(/^\?/, ""));
-  const searchError = params.get("manifestError");
+  const searchObj = search as Record<string, unknown>;
+  const searchError = searchObj?.manifestError as string | undefined;
 
   // When returning from the App Manifest Flow, start directly in the form
   // phase with pre-filled data.
   const initialPhase = routeContext.manifestKey ? "form" : "token";
 
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("cc_claim_token") || "";
+    }
+    return "";
+  });
   const [phase, setPhase] = useState<"token" | "choose" | "form" | "restarting">(initialPhase);
   const [error, setError] = useState(searchError || "");
   const [busy, setBusy] = useState(false);
@@ -91,6 +96,9 @@ function BootstrapPage() {
     try {
       const result = await verifyClaimTokenServerFn({ data: { token: token.trim() } });
       if (result.valid) {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("cc_claim_token", token.trim());
+        }
         // After verifying the token, give the operator the choice between
         // registering a new App and entering an existing one.
         setPhase("choose");
@@ -577,6 +585,15 @@ function BootstrapForm({
  * can use server function RPC from the client.
  */
 async function registerNewApp() {
-  const url = await getManifestRegistrationUrl();
-  window.location.href = url;
+  const manifest = await fetchManifest();
+  const form = document.createElement("form");
+  form.setAttribute("method", "post");
+  form.setAttribute("action", "https://github.com/settings/apps/new");
+  const input = document.createElement("input");
+  input.setAttribute("type", "hidden");
+  input.setAttribute("name", "manifest");
+  input.setAttribute("value", JSON.stringify(manifest));
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
 }

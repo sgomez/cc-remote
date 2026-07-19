@@ -25,6 +25,7 @@
 // The limit parsers live with their only consumer, the Docker adapter, and are
 // pure (no dockerode import), so the preflight can reuse them without dragging
 // infrastructure in — this module stays unit-testable with no server/Docker/DB.
+import "./bootstrap-env";
 import { parseMemoryBytes, parseNanoCpus } from "../adapters/docker/config";
 import type { BootstrapRecord } from "../core/domain/bootstrap";
 import { validateBootstrapRecord } from "../core/domain/bootstrap";
