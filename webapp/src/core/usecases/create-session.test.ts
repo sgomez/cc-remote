@@ -12,6 +12,7 @@ import {
   CloneFailedError,
   InvalidRepoError,
   InvalidSessionNameError,
+  RepositoryNotGrantedError,
   SessionExistsError,
 } from "../domain/errors";
 import { SESSION_LABELS, workspaceVolumeName } from "../domain/session";
@@ -37,6 +38,16 @@ function setup(seed: Account[] = [account()]) {
   const cloneIssuer = new FakeGitHubTokenIssuer();
   const sessionIssuer = new FakeGitHubTokenIssuer();
   const secretRegistry = new FakeBrokerSecretRegistry();
+  // Seed a default "all" installation so existing tests still pass.
+  cloneIssuer.installations = [
+    {
+      id: 1,
+      account: { login: "o", avatarUrl: "", type: "User" },
+      repositorySelection: "all",
+      repositories: [],
+      htmlUrl: "",
+    },
+  ];
   const create = makeCreateSession({
     accounts,
     engine,
@@ -76,6 +87,73 @@ describe("create-session", () => {
   it("refuses a duplicate session name", async () => {
     ctx.engine.seedRunningSession({ name: "s1", repo: "o/r", accountId: "acc-1" });
     await expect(ctx.create(input)).rejects.toThrow(SessionExistsError);
+  });
+
+  it("accepts a repo covered by an 'all' installation", async () => {
+    ctx.cloneIssuer.installations = [
+      {
+        id: 1,
+        account: { login: "o", avatarUrl: "", type: "User" },
+        repositorySelection: "all",
+        repositories: [],
+        htmlUrl: "",
+      },
+    ];
+    await expect(ctx.create(input)).resolves.toMatchObject({ name: "s1" });
+  });
+
+  it("accepts a repo in a 'selected' installation's repository list", async () => {
+    ctx.cloneIssuer.installations = [
+      {
+        id: 1,
+        account: { login: "o", avatarUrl: "", type: "User" },
+        repositorySelection: "selected",
+        repositories: ["o/r", "o/other"],
+        htmlUrl: "",
+      },
+    ];
+    await expect(ctx.create(input)).resolves.toMatchObject({ name: "s1" });
+  });
+
+  it("refuses a repo not in any installation", async () => {
+    ctx.cloneIssuer.installations = [];
+    await expect(ctx.create(input)).rejects.toThrow(RepositoryNotGrantedError);
+  });
+
+  it("refuses a repo outside a 'selected' installation's repository list", async () => {
+    ctx.cloneIssuer.installations = [
+      {
+        id: 1,
+        account: { login: "o", avatarUrl: "", type: "User" },
+        repositorySelection: "selected",
+        repositories: ["other/repo"],
+        htmlUrl: "",
+      },
+    ];
+    await expect(ctx.create(input)).rejects.toThrow(RepositoryNotGrantedError);
+  });
+
+  it("calls listInstallations to check the grant before provisioning", async () => {
+    ctx.cloneIssuer.installations = [
+      {
+        id: 1,
+        account: { login: "o", avatarUrl: "", type: "User" },
+        repositorySelection: "all",
+        repositories: [],
+        htmlUrl: "",
+      },
+    ];
+    await ctx.create(input);
+    expect(ctx.cloneIssuer.listInstallationsCalls).toBe(1);
+  });
+
+  it("throws RepositoryNotGrantedError before provisioning any containers", async () => {
+    // No installations seeded — the grant check should fail before any
+    // container or volume is created.
+    ctx.cloneIssuer.installations = [];
+    await expect(ctx.create(input)).rejects.toThrow(RepositoryNotGrantedError);
+    expect(ctx.engine.runSessionSpecs).toHaveLength(0);
+    expect(ctx.engine.volumes.size).toBe(0);
   });
 
   it("provisions the workspace volume and runs the main container two-phase", async () => {

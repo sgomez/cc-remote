@@ -2,7 +2,12 @@
 // container, then main agent container), mirroring the legacy lifecycle. The
 // container carries the `cc-remote-account-id` label (replacing provider-id).
 
-import { AccountNotFoundError, AccountNotReadyError, SessionExistsError } from "../domain/errors";
+import {
+  AccountNotFoundError,
+  AccountNotReadyError,
+  RepositoryNotGrantedError,
+  SessionExistsError,
+} from "../domain/errors";
 import { requireProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
 import { assertValidRepo, assertValidSessionName } from "../domain/session";
@@ -42,6 +47,14 @@ export function makeCreateSession(deps: CreateSessionDeps) {
     if (await deps.engine.getSessionContainer(input.name)) {
       throw new SessionExistsError(input.name);
     }
+
+    // Verify the repository is covered by a GitHub App installation.
+    const installations = await deps.cloneIssuer.listInstallations();
+    const granted = installations.some((inst) => {
+      if (inst.repositorySelection === "all") return true;
+      return inst.repositories.includes(input.repo);
+    });
+    if (!granted) throw new RepositoryNotGrantedError(input.repo);
 
     const type = requireProviderType(account.providerType);
 
