@@ -17,7 +17,7 @@ import type {
   SessionContainerSpec,
   WorkspaceGitProbe,
 } from "../../core";
-import { SessionNotFoundError, WORKSPACE_PROBE_SEPARATOR } from "../../core";
+import { SESSION_LABELS, SessionNotFoundError, WORKSPACE_PROBE_SEPARATOR } from "../../core";
 import { configFromEnv, type DockerAdapterConfig, WORKSPACE_MOUNT } from "./config";
 import {
   cloneContainerName,
@@ -342,6 +342,36 @@ export class DockerContainerEngine implements ContainerEngine {
     } catch (err) {
       if (!isNotFound(err)) throw err;
     }
+  }
+
+  async findSessionBySecret(secret: string): Promise<{ sessionName: string; repo: string } | null> {
+    const containers = await this.docker.listContainers({ all: true });
+    const sessionContainers = containers.filter(
+      (c) => isSessionLabelled(c.Labels) && c.Labels[SESSION_LABELS.cloning] !== "true",
+    );
+
+    for (const c of sessionContainers) {
+      try {
+        const container = this.docker.getContainer(c.Id);
+        const info = await container.inspect();
+        const env = info.Config.Env || [];
+        const secretEnv = env.find((e) => e.startsWith("CC_BROKER_SECRET="));
+        if (secretEnv) {
+          const containerSecret = secretEnv.split("=")[1];
+          if (containerSecret === secret) {
+            const sessionName = info.Config.Labels[SESSION_LABELS.name];
+            const repo = info.Config.Labels[SESSION_LABELS.repo];
+            if (sessionName && repo) {
+              return { sessionName, repo };
+            }
+          }
+        }
+      } catch (err) {
+        // Ignore individual container inspection errors (e.g. if container was removed in the meantime)
+        console.warn(`[broker-discovery] failed to inspect container ${c.Id}:`, err);
+      }
+    }
+    return null;
   }
 
   /** Run a short-lived helper container to completion and return its exit code. */

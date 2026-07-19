@@ -31,7 +31,7 @@ export class FakeBrokerSecretRegistry implements BrokerSecretRegistry {
     this.entries.set(secret, { sessionName, repo });
   }
 
-  lookup(secret: string): BrokerSecretEntry | null {
+  async lookup(secret: string): Promise<BrokerSecretEntry | null> {
     this.lookedUpSecrets.push(secret);
     return this.entries.get(secret) ?? null;
   }

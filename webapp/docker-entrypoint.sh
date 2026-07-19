@@ -47,8 +47,13 @@ fi
 echo "[entrypoint] applying database migrations..."
 pnpm run --silent migrate
 
-echo "[entrypoint] starting web-manager on port ${PORT:-4000}..."
-exec node .output/server/index.mjs
+if [ $# -gt 0 ]; then
+  echo "[entrypoint] starting web-manager with custom command: $*"
+  exec "$@"
+else
+  echo "[entrypoint] starting web-manager on port ${PORT:-4000}..."
+  exec node .output/server/index.mjs
+fi
 
 # Reopen bootstrap (host-side command, issue #57):
 #

@@ -299,4 +299,13 @@ export class FakeContainerEngine implements ContainerEngine {
   async hasCredentials(volumeName: string): Promise<boolean> {
     return this.credentialed.has(volumeName);
   }
+
+  async findSessionBySecret(secret: string): Promise<{ sessionName: string; repo: string } | null> {
+    for (const spec of this.runSessionSpecs) {
+      if (spec.env.CC_BROKER_SECRET === secret) {
+        return { sessionName: spec.sessionName, repo: spec.repo };
+      }
+    }
+    return null;
+  }
 }

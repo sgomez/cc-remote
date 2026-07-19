@@ -34,7 +34,7 @@ export function makeMintBrokerToken(deps: MintBrokerTokenDeps) {
   return async function mintBrokerToken(
     input: MintBrokerTokenInput,
   ): Promise<GitHubTokenCredential> {
-    const entry = deps.secretRegistry.lookup(input.brokerSecret);
+    const entry = await deps.secretRegistry.lookup(input.brokerSecret);
     if (!entry) throw new BrokerTokenRefusedError();
 
     // Verify the Session still exists (it may have been destroyed).

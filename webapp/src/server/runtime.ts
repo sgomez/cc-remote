@@ -65,8 +65,20 @@ export function brokerSecretRegistry(): BrokerSecretRegistry {
       register(secret, sessionName, repo) {
         entries.set(secret, { sessionName, repo });
       },
-      lookup(secret) {
-        return entries.get(secret) ?? null;
+      async lookup(secret) {
+        const cached = entries.get(secret);
+        if (cached) return cached;
+
+        try {
+          const entry = await containerEngine().findSessionBySecret(secret);
+          if (entry) {
+            entries.set(secret, entry);
+            return entry;
+          }
+        } catch (err) {
+          console.error("[broker-registry] failed to recover secret from docker:", err);
+        }
+        return null;
       },
     };
   }

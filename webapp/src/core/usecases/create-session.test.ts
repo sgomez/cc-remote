@@ -100,6 +100,32 @@ describe("create-session", () => {
     await expect(ctx.create(input)).resolves.toMatchObject({ name: "s1" });
   });
 
+  it("refuses a repo covered by an 'all' installation of another owner", async () => {
+    ctx.cloneIssuer.installations = [
+      {
+        id: 1,
+        account: { login: "other-owner", avatarUrl: "", type: "User" },
+        repositorySelection: "all",
+        repositories: [],
+        htmlUrl: "",
+      },
+    ];
+    await expect(ctx.create(input)).rejects.toThrow(RepositoryNotGrantedError);
+  });
+
+  it("handles case-insensitive repository and owner matching", async () => {
+    ctx.cloneIssuer.installations = [
+      {
+        id: 1,
+        account: { login: "O", avatarUrl: "", type: "User" },
+        repositorySelection: "selected",
+        repositories: ["O/R"],
+        htmlUrl: "",
+      },
+    ];
+    await expect(ctx.create({ ...input, repo: "o/r" })).resolves.toMatchObject({ name: "s1" });
+  });
+
   it("accepts a repo in a 'selected' installation's repository list", async () => {
     ctx.cloneIssuer.installations = [
       {

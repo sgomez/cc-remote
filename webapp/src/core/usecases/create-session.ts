@@ -48,10 +48,13 @@ export function makeCreateSession(deps: CreateSessionDeps) {
     }
 
     // Verify the repository is covered by a GitHub App installation.
+    const [owner] = input.repo.split("/");
     const installations = await deps.cloneIssuer.listInstallations();
     const granted = installations.some((inst) => {
+      const ownerMatches = inst.account.login.toLowerCase() === owner.toLowerCase();
+      if (!ownerMatches) return false;
       if (inst.repositorySelection === "all") return true;
-      return inst.repositories.includes(input.repo);
+      return inst.repositories.some((r) => r.toLowerCase() === input.repo.toLowerCase());
     });
     if (!granted) throw new RepositoryNotGrantedError(input.repo);
 

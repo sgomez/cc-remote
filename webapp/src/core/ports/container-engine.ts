@@ -123,4 +123,6 @@ export interface ContainerEngine {
   seedVolume(volumeName: string, filePath: string, content: string): Promise<void>;
   /** Whether credentials have appeared in an Account Config Volume. */
   hasCredentials(volumeName: string): Promise<boolean>;
+  /** Find a session's name and repository by its CC_BROKER_SECRET. */
+  findSessionBySecret(secret: string): Promise<{ sessionName: string; repo: string } | null>;
 }

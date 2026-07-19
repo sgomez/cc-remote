@@ -96,6 +96,7 @@ export function createGitHubAppTokenIssuer(config: GitHubAppTokenIssuerConfig): 
       }
 
       const installation = (await installationRes.json()) as { id: number };
+      const [, repoName] = repo.split("/");
 
       // Mint a repo-scoped installation token with only the permissions this
       // deployment declares. GitHub enforces the token cannot exceed the
@@ -111,13 +112,16 @@ export function createGitHubAppTokenIssuer(config: GitHubAppTokenIssuerConfig): 
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            repositories: [repo],
+            repositories: [repoName],
             permissions: TOKEN_PERMISSIONS,
           }),
         },
       );
 
       if (!tokenRes.ok) {
+        if (tokenRes.status === 422) {
+          throw new RepositoryNotGrantedError(repo);
+        }
         const body = await tokenRes.text().catch(() => "");
         throw new Error(
           `GitHub App: failed to mint installation token for ${repo} (HTTP ${tokenRes.status})${body ? `: ${body}` : ""}`,

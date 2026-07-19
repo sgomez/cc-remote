@@ -87,7 +87,7 @@ describe("createGitHubAppTokenIssuer", () => {
     const [, tokenOpts] = fetchSpy.mock.calls[1];
     expect(tokenOpts.method).toBe("POST");
     const body = JSON.parse(tokenOpts.body);
-    expect(body.repositories).toEqual(["myorg/myrepo"]);
+    expect(body.repositories).toEqual(["myrepo"]);
     expect(body.permissions).toEqual({ contents: "write", pull_requests: "write" });
   });
 
@@ -133,6 +133,17 @@ describe("createGitHubAppTokenIssuer", () => {
     });
 
     await expect(issuer.issueToken("o/r")).rejects.toThrow(/GitHub App.*403/);
+  });
+
+  it("throws RepositoryNotGrantedError when the token-minting endpoint returns 422 (repo not accessible/selected)", async () => {
+    fetchSpy.mockResolvedValueOnce(installationResponse(1)).mockResolvedValueOnce({
+      status: 422,
+      ok: false,
+      json: async () => ({}),
+      text: async () => "Validation Failed",
+    });
+
+    await expect(issuer.issueToken("o/r")).rejects.toThrow(RepositoryNotGrantedError);
   });
 });
 

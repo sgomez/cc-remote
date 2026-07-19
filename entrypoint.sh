@@ -46,6 +46,8 @@ fi
 # 2. User initialization block (runs as non-root user 'node')
 echo " [Info] Running as non-root user node (UID: $(id -u), GID: $(id -g))"
 
+export PATH="/home/node/.local/bin:$PATH"
+
 # Configure Git identity inside the container
 if [ -n "$GIT_USER_NAME" ]; then
     git config --global user.name "$GIT_USER_NAME"
@@ -178,6 +180,19 @@ req.write(body);
 req.end();
 BROKER_EOF
     chmod +x /home/node/.local/bin/git-credential-broker
+
+    # gh CLI wrapper to inject the token from the broker dynamically
+    cat > /home/node/.local/bin/gh <<'GH_EOF'
+#!/usr/bin/env bash
+TOKEN=$(printf "protocol=https\nhost=github.com\n\n" | git credential fill 2>/dev/null | awk -F= '/password/ {print $2}')
+if [ -n "$TOKEN" ]; then
+    export GITHUB_TOKEN="$TOKEN"
+    export GH_TOKEN="$TOKEN"
+fi
+exec /usr/bin/gh "$@"
+GH_EOF
+    chmod +x /home/node/.local/bin/gh
+
     git config --global credential."https://github.com".helper "/home/node/.local/bin/git-credential-broker"
     git config --global url."https://github.com/".insteadOf "git@github.com:"
 fi

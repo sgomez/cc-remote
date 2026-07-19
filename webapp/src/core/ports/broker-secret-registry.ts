@@ -12,5 +12,5 @@ export interface BrokerSecretRegistry {
   /** Record a new broker secret for a Session. */
   register(secret: string, sessionName: string, repo: string): void;
   /** Look up a Session by its broker secret; returns null if unknown. */
-  lookup(secret: string): BrokerSecretEntry | null;
+  lookup(secret: string): Promise<BrokerSecretEntry | null>;
 }
