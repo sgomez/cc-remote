@@ -56,6 +56,12 @@ services:
     restart: unless-stopped
     depends_on:
       - docker-socket-proxy
+    # Cap web-manager's own memory. Every agent container is capped
+    # (AGENT_MEMORY_LIMIT), but web-manager was not: it is multi-homed onto the
+    # agents net and runs the credential broker on 0.0.0.0:4001, so an untrusted
+    # agent can drive traffic at it. A bounded process fails predictably (OOM,
+    # restarted by the `unless-stopped` policy) instead of dragging the host down.
+    mem_limit: 1g
     security_opt:
       - no-new-privileges:true
     ports:

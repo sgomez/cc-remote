@@ -32,6 +32,16 @@ function tokenIssuer(): GitHubTokenIssuer {
   return _tokenIssuer;
 }
 
+// The only legitimate payload is a tiny JSON object holding a per-Session
+// secret. Cap the body hard: this port is reachable by every untrusted agent
+// container on the agents network, so an unbounded `body += chunk` is a trivial
+// memory-exhaustion vector against web-manager. A few KB is orders of magnitude
+// more than the real payload needs.
+const MAX_BODY_BYTES = 4 * 1024;
+// Abandon a client that opens the socket and then stalls (slowloris): without a
+// deadline a handful of idle connections tie up sockets indefinitely.
+const REQUEST_TIMEOUT_MS = 10_000;
+
 export default definePlugin((nitro) => {
   const port = Number.parseInt(process.env.BROKER_PORT ?? "4001", 10);
 
@@ -43,9 +53,43 @@ export default definePlugin((nitro) => {
       return;
     }
 
+    // Reject over-large declared bodies up front, before reading any data.
+    const declaredLength = Number.parseInt(req.headers["content-length"] ?? "", 10);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+      res.writeHead(413);
+      res.end(JSON.stringify({ error: "payload_too_large" }));
+      req.socket.destroy();
+      return;
+    }
+
+    // Kill the request if the client is too slow to finish sending.
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      if (!res.headersSent) {
+        res.writeHead(408);
+        res.end(JSON.stringify({ error: "request_timeout" }));
+      }
+      req.socket.destroy();
+    });
+
     let body = "";
-    req.on("data", (chunk: string) => (body += chunk));
+    let byteLength = 0;
+    let overflowed = false;
+    req.on("data", (chunk: string) => {
+      if (overflowed) return;
+      // chunk is a string here (no explicit encoding set on the stream), so its
+      // byte length can exceed its character length for multi-byte input.
+      byteLength += Buffer.byteLength(chunk);
+      if (byteLength > MAX_BODY_BYTES) {
+        overflowed = true;
+        res.writeHead(413);
+        res.end(JSON.stringify({ error: "payload_too_large" }));
+        req.socket.destroy();
+        return;
+      }
+      body += chunk;
+    });
     req.on("end", async () => {
+      if (overflowed) return;
       let secret: unknown;
       try {
         secret = JSON.parse(body).secret;
