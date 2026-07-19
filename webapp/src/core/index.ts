@@ -5,6 +5,15 @@
 // Domain
 export type { Account, AccountStatus } from "./domain/account";
 export { accountConfigVolumeName } from "./domain/account";
+export type {
+  BootstrapRecord,
+  DeploymentState,
+  ManifestConversionResponse,
+} from "./domain/bootstrap";
+export {
+  deriveBootstrapRecordFromManifest,
+  validateBootstrapRecord,
+} from "./domain/bootstrap";
 export * from "./domain/errors";
 export type { LoginContainer } from "./domain/login";
 export { buildLoginLabels, LOGIN_LABELS } from "./domain/login";

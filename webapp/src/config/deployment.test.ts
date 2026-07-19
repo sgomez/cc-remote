@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DeploymentConfigError, loadDeploymentConfig } from "./deployment";
+import type { BootstrapRecord } from "../core/domain/bootstrap";
 
 // A complete, valid infra env (the "new app" set from PRD §8 / issue #17).
 // Individual cases clone this and remove/override keys to exercise a rule.
@@ -15,6 +16,18 @@ const VALID: NodeJS.ProcessEnv = {
     "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----",
   ).toString("base64"),
   GITHUB_APP_SLUG: "cc-remote-web-manager",
+};
+
+// A valid BootstrapRecord matching the VALID env above.
+const VALID_BOOTSTRAP: BootstrapRecord = {
+  githubAppId: "123456",
+  githubAppSlug: "cc-remote-web-manager",
+  githubClientId: "client-id",
+  githubClientSecret: "client-secret",
+  githubAppPrivateKey: Buffer.from(
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----",
+  ).toString("base64"),
+  allowedGithubUsers: ["sgomez", "alice"],
 };
 
 describe("loadDeploymentConfig", () => {
@@ -63,28 +76,28 @@ describe("loadDeploymentConfig", () => {
     }
     expect(error).toBeInstanceOf(DeploymentConfigError);
     const { errors } = error as DeploymentConfigError;
-    // One aggregated failure per missing required var (not fail-on-first).
+    // Only infra env vars are required; GitHub identity fields are optional.
     expect(errors.some((m) => m.includes("BETTER_AUTH_URL"))).toBe(true);
     expect(errors.some((m) => m.includes("BETTER_AUTH_SECRET"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_CLIENT_ID"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_CLIENT_SECRET"))).toBe(true);
-    expect(errors.some((m) => m.includes("ALLOWED_GITHUB_USERS"))).toBe(true);
     expect(errors.some((m) => m.includes("DOCKER_HOST"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_APP_ID"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_APP_PRIVATE_KEY"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_APP_SLUG"))).toBe(true);
-    // The message string carries all of them for the operator to read.
+    // GitHub identity env vars are no longer required (they come from the
+    // Bootstrap File or the deployment is unconfigured).
+    expect(errors.some((m) => m.includes("GITHUB_CLIENT_ID"))).toBe(false);
+    expect(errors.some((m) => m.includes("GITHUB_CLIENT_SECRET"))).toBe(false);
+    expect(errors.some((m) => m.includes("GITHUB_APP_ID"))).toBe(false);
+    expect(errors.some((m) => m.includes("GITHUB_APP_PRIVATE_KEY"))).toBe(false);
+    expect(errors.some((m) => m.includes("GITHUB_APP_SLUG"))).toBe(false);
+    // The message string carries all problems for the operator to read.
     expect((error as DeploymentConfigError).message).toContain("BETTER_AUTH_URL");
-    expect((error as DeploymentConfigError).message).toContain("GITHUB_CLIENT_ID");
   });
 
   it("treats an empty required var (whitespace only) as missing", () => {
-    expect(() => loadDeploymentConfig({ ...VALID, GITHUB_CLIENT_ID: "   " })).toThrow(
-      DeploymentConfigError,
-    );
+    expect(() =>
+      loadDeploymentConfig({ ...VALID, BETTER_AUTH_URL: "   " }),
+    ).toThrow(DeploymentConfigError);
   });
 
-  it("rejects an empty allow-list (fail-closed would brick login)", () => {
+  it("rejects an empty allow-list when GitHub env vars are present (fail-closed)", () => {
     let errors: string[] = [];
     try {
       loadDeploymentConfig({ ...VALID, ALLOWED_GITHUB_USERS: " , ," });
@@ -153,29 +166,10 @@ describe("loadDeploymentConfig", () => {
     expect(cfg).not.toHaveProperty("hostClaude");
   });
 
-  it("rejects a missing or empty GitHub App configuration at startup", () => {
-    // Mirror of the agent-limit rejection pattern: missing vars must fail
-    // loud at validate:env time, not silently at first clone.
-    let errors: string[] = [];
-    try {
-      loadDeploymentConfig({
-        ...VALID,
-        GITHUB_APP_ID: "",
-        GITHUB_APP_PRIVATE_KEY: "   ",
-        GITHUB_APP_SLUG: "",
-      });
-    } catch (e) {
-      errors = (e as DeploymentConfigError).errors;
-    }
-    expect(errors.some((m) => m.includes("GITHUB_APP_ID"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_APP_PRIVATE_KEY"))).toBe(true);
-    expect(errors.some((m) => m.includes("GITHUB_APP_SLUG"))).toBe(true);
-  });
-
-  it("rejects a non-numeric GITHUB_APP_ID", () => {
-    expect(() => loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" })).toThrow(
-      /GITHUB_APP_ID/,
-    );
+  it("rejects a non-numeric GITHUB_APP_ID from env", () => {
+    expect(() =>
+      loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" }),
+    ).toThrow(/GITHUB_APP_ID/);
   });
 
   it("rejects a base64 GITHUB_APP_PRIVATE_KEY that does not decode to a PEM", () => {
@@ -191,5 +185,131 @@ describe("loadDeploymentConfig", () => {
     expect(() =>
       loadDeploymentConfig({ ...VALID, GITHUB_APP_PRIVATE_KEY: "!!!not-base64!!!" }),
     ).toThrow(/GITHUB_APP_PRIVATE_KEY/);
+  });
+
+  // --- Unconfigured Deployment tests ---
+
+  it("admits an Unconfigured Deployment (no GitHub env vars, no bootstrap) as legal", () => {
+    const cfg = loadDeploymentConfig({
+      BETTER_AUTH_URL: "https://cc.example.com",
+      BETTER_AUTH_SECRET: "0".repeat(64),
+      DOCKER_HOST: "tcp://docker-socket-proxy:2375",
+    });
+    // Infra fields are filled.
+    expect(cfg.betterAuthUrl).toBe("https://cc.example.com");
+    expect(cfg.dockerHost).toBe("tcp://docker-socket-proxy:2375");
+    // GitHub identity fields are empty.
+    expect(cfg.githubAppId).toBe("");
+    expect(cfg.githubAppPrivateKey).toBe("");
+    expect(cfg.githubAppSlug).toBe("");
+    expect(cfg.githubClientId).toBe("");
+    expect(cfg.githubClientSecret).toBe("");
+    // Allow-list is empty (no sign-in possible, which is correct for
+    // an unconfigured deployment).
+    expect(cfg.allowedGithubUsers).toEqual([]);
+  });
+
+  it("still requires BETTER_AUTH_URL, BETTER_AUTH_SECRET and DOCKER_HOST even when unconfigured", () => {
+    expect(() =>
+      loadDeploymentConfig({
+        // No GitHub env vars at all.
+      }),
+    ).toThrow(/BETTER_AUTH_URL/);
+  });
+
+  // --- BootstrapRecord tests ---
+
+  it("loads GitHub identity from a BootstrapRecord when present", () => {
+    const cfg = loadDeploymentConfig(
+      {
+        BETTER_AUTH_URL: "https://cc.example.com",
+        BETTER_AUTH_SECRET: "0".repeat(64),
+        DOCKER_HOST: "tcp://docker-socket-proxy:2375",
+      },
+      VALID_BOOTSTRAP,
+    );
+    expect(cfg.githubAppId).toBe("123456");
+    expect(cfg.githubAppSlug).toBe("cc-remote-web-manager");
+    expect(cfg.githubClientId).toBe("client-id");
+    expect(cfg.githubClientSecret).toBe("client-secret");
+    expect(cfg.githubAppPrivateKey).toBeTruthy();
+    expect(cfg.allowedGithubUsers).toEqual(["sgomez", "alice"]);
+  });
+
+  it("BootstrapRecord takes precedence over env vars for GitHub identity", () => {
+    const cfg = loadDeploymentConfig(
+      {
+        ...VALID,
+        // These env vars differ from the BootstrapRecord, but the record wins.
+        GITHUB_CLIENT_ID: "env-client-id",
+        GITHUB_CLIENT_SECRET: "env-client-secret",
+        GITHUB_APP_ID: "999999",
+        GITHUB_APP_SLUG: "env-slug",
+        ALLOWED_GITHUB_USERS: "env-user",
+      },
+      VALID_BOOTSTRAP,
+    );
+    expect(cfg.githubClientId).toBe("client-id");
+    expect(cfg.githubClientSecret).toBe("client-secret");
+    expect(cfg.githubAppId).toBe("123456");
+    expect(cfg.githubAppSlug).toBe("cc-remote-web-manager");
+    expect(cfg.allowedGithubUsers).toEqual(["sgomez", "alice"]);
+  });
+
+  it("rejects an invalid BootstrapRecord with aggregated errors", () => {
+    let errors: string[] = [];
+    try {
+      loadDeploymentConfig(
+        {
+          BETTER_AUTH_URL: "https://cc.example.com",
+          BETTER_AUTH_SECRET: "0".repeat(64),
+          DOCKER_HOST: "tcp://docker-socket-proxy:2375",
+        },
+        {
+          githubAppId: "not-a-number",
+          githubAppPrivateKey: "!!!bad!!!",
+          githubAppSlug: "",
+          githubClientId: "",
+          githubClientSecret: "",
+          allowedGithubUsers: [],
+        },
+      );
+    } catch (e) {
+      errors = (e as DeploymentConfigError).errors;
+    }
+    // All bootstrap validation errors are reported together.
+    expect(errors.some((m) => m.includes("githubAppId"))).toBe(true);
+    expect(errors.some((m) => m.includes("githubAppPrivateKey"))).toBe(true);
+    expect(errors.some((m) => m.includes("githubAppSlug"))).toBe(true);
+    expect(errors.some((m) => m.includes("githubClientId"))).toBe(true);
+    expect(errors.some((m) => m.includes("githubClientSecret"))).toBe(true);
+    expect(errors.some((m) => m.includes("allowedGithubUsers"))).toBe(true);
+  });
+
+  it("collects both infra env errors and bootstrap errors together", () => {
+    let errors: string[] = [];
+    try {
+      loadDeploymentConfig(
+        {
+          // Missing BETTER_AUTH_SECRET
+          BETTER_AUTH_URL: "https://cc.example.com",
+          DOCKER_HOST: "tcp://docker-socket-proxy:2375",
+        },
+        {
+          githubAppId: "",
+          githubAppPrivateKey: "",
+          githubAppSlug: "",
+          githubClientId: "",
+          githubClientSecret: "",
+          allowedGithubUsers: [],
+        },
+      );
+    } catch (e) {
+      errors = (e as DeploymentConfigError).errors;
+    }
+    // One error from infra (BETTER_AUTH_SECRET)
+    expect(errors.some((m) => m.includes("BETTER_AUTH_SECRET"))).toBe(true);
+    // Bootstrap errors
+    expect(errors.some((m) => m.includes("Bootstrap File"))).toBe(true);
   });
 });
