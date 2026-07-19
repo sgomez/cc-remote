@@ -90,7 +90,19 @@ A few smaller items from the 2026-07-13 architecture review, closed rather than 
 - **Origin check on WebSocket upgrades.** The terminal and Login Container WS proxies (`server/routes/ws/terminal/[name].ts`, `server/routes/ws/login/[id].ts`) now reject the upgrade (before any session lookup) unless the `Origin` header matches the deployment's own public URL (`BETTER_AUTH_URL`, the same origin better-auth signs cookies against). A missing `Origin` is rejected too — every browser sends it on a WS handshake, so its absence means the caller isn't the app's own UI. Previously the only defense against cross-site WebSocket hijacking was better-auth's implicit `SameSite=Lax` cookie default; this adds a second, independent check. See `src/server/ws-origin.ts`.
 - **Explicit better-auth cookie/origin config.** `trustedOrigins` is now pinned to `BETTER_AUTH_URL` explicitly, and cookie attributes (`sameSite: "lax"`, `httpOnly: true`, and a `BETTER_AUTH_URL`-scheme-derived `useSecureCookies`) are set explicitly in `src/adapters/auth/auth.ts` instead of relying on better-auth's implicit per-environment defaults.
 - **Security headers at the edge.** The `Caddyfile` now sends `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: frame-ancestors 'none'`, and `Referrer-Policy: no-referrer` on every response, and drops the `Server` header.
-- **0600 on generated secrets.** `config.js` now `chmod`s both `config.json` and the compiled `.env` to `0600` right after writing them — both hold plaintext secrets (`BETTER_AUTH_SECRET`, the GitHub OAuth client secret) and previously landed at the process's default mode.
+- **0600 on generated secrets.** `config.js` now `chmod`s both `config.json` and the compiled `.env` to `0600` right after writing them — both hold plaintext secrets (`BETTER_AUTH_SECRET`) and previously landed at the process's default mode.
+
+## Posture change: private key moves off the host filesystem
+
+The GitHub App private key and OAuth client secret no longer sit in a plaintext `.env` file on the host. In the two-phase bootstrap, these values are stored in the **Bootstrap File** on the persisted data volume (`cc-remote-db`), alongside the signed-in users' GitHub access tokens that better-auth already stores there in cleartext.
+
+This is not a new class of exposure: the data volume is already a credential store. It does mean that:
+
+- A host filesystem compromise no longer hands over the App private key (it was at `0600`, but still on disk).
+- A backup of the data volume contains the App identity in addition to user tokens -- guard backups accordingly.
+- Rotating the App requires reopening bootstrap from the host (see the [install guide](install.md#reopening-bootstrap)), not editing a file on the host.
+
+The private key is base64-encoded in the Bootstrap File, not encrypted at rest. Encrypting one file on the volume would be theatre without a key management story; the security model rests on the same volume isolation that protects the database.
 
 ## Sibling containers, not Docker-in-Docker
 
