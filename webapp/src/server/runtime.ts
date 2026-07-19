@@ -1,15 +1,16 @@
 // Server composition root for the delivery layer (#15 WS/SSE; #16 UI). Lazily
-// builds and memoizes the shared Docker engine and the SQLite-backed
-// AccountRepository so every Nitro WS route, TSS SSE route, and server function
-// talks to the same adapters. Kept out of `src/core` (framework-free) and out
-// of the route modules (thin glue).
+// builds and memoizes the shared Docker engine, the SQLite-backed
+// AccountRepository, and the BrokerSecretRegistry so every Nitro WS route, TSS
+// SSE route, server function, and the broker plugin talks to the same adapters.
+// Kept out of `src/core` (framework-free) and out of the route modules (thin glue).
 //
-// Nothing here runs at import time — the engine and ORM are created on first
-// use, so unit tests (which never import this) need no Docker daemon or DB.
+// Nothing here runs at import time — the engine, ORM, and registry are created
+// on first use, so unit tests (which never import this) need no Docker daemon
+// or DB.
 
 import { initOrm, MikroOrmAccountRepository } from "~/adapters/db";
 import { createDockerContainerEngine, type DockerContainerEngine } from "~/adapters/docker";
-import type { AccountRepository } from "~/core";
+import type { AccountRepository, BrokerSecretRegistry } from "~/core";
 
 let engine: DockerContainerEngine | undefined;
 
@@ -28,6 +29,14 @@ export function permissionMode(): string {
   return process.env.PERMISSION_MODE ?? "auto";
 }
 
+/**
+ * The broker URL sessions use to reach the credential broker. Defaults to the
+ * Docker service name on the agents network, on the broker's dedicated port.
+ */
+export function brokerUrl(): string {
+  return process.env.BROKER_URL ?? "http://web-manager:4001";
+}
+
 let accountsPromise: Promise<AccountRepository> | undefined;
 
 /**
@@ -38,4 +47,28 @@ let accountsPromise: Promise<AccountRepository> | undefined;
 export function accountRepository(): Promise<AccountRepository> {
   accountsPromise ??= initOrm().then((orm) => new MikroOrmAccountRepository(orm));
   return accountsPromise;
+}
+
+let secretRegistry: BrokerSecretRegistry | undefined;
+
+/**
+ * The shared in-memory `BrokerSecretRegistry`. Session provisioning registers
+ * per-Session secrets here; the broker validates against the same store.
+ * Survives as long as the process does — a server restart drops all entries
+ * (a trade accepted while the durable token remains; the registry can move to
+ * a more durable store later without touching the port interface).
+ */
+export function brokerSecretRegistry(): BrokerSecretRegistry {
+  if (!secretRegistry) {
+    const entries = new Map<string, { sessionName: string; repo: string }>();
+    secretRegistry = {
+      register(secret, sessionName, repo) {
+        entries.set(secret, { sessionName, repo });
+      },
+      lookup(secret) {
+        return entries.get(secret) ?? null;
+      },
+    };
+  }
+  return secretRegistry;
 }

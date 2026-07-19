@@ -25,7 +25,13 @@ import {
 } from "~/core";
 import type { GitHubTokenIssuer } from "~/core/ports/github-token-issuer";
 import type { SessionRow } from "~/ui/view-models/rows";
-import { accountRepository, containerEngine, permissionMode } from "./runtime";
+import {
+  accountRepository,
+  brokerSecretRegistry,
+  brokerUrl,
+  containerEngine,
+  permissionMode,
+} from "./runtime";
 
 async function guard(): Promise<void> {
   await requireSession(getRequest().headers);
@@ -78,6 +84,8 @@ export const createSession = createServerFn({ method: "POST" })
       ids: uuidGenerator,
       cloneIssuer: cloneTokenIssuer(),
       sessionIssuer: oauthTokenIssuer(),
+      secretRegistry: brokerSecretRegistry(),
+      brokerUrl: brokerUrl(),
     });
     const session = await create({
       name: data.name,
@@ -124,6 +132,8 @@ export const resetSession = createServerFn({ method: "POST" })
       ids: uuidGenerator,
       cloneIssuer: cloneTokenIssuer(),
       sessionIssuer: oauthTokenIssuer(),
+      secretRegistry: brokerSecretRegistry(),
+      brokerUrl: brokerUrl(),
     });
     await reset({
       name: data.name,

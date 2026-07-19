@@ -7,6 +7,7 @@ import { requireProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
 import { assertValidRepo, assertValidSessionName } from "../domain/session";
 import type { AccountRepository } from "../ports/account-repository";
+import type { BrokerSecretRegistry } from "../ports/broker-secret-registry";
 import type { ContainerEngine } from "../ports/container-engine";
 import type { GitHubTokenIssuer } from "../ports/github-token-issuer";
 import type { IdGenerator } from "../ports/id-generator";
@@ -25,6 +26,8 @@ export type CreateSessionDeps = {
   ids: IdGenerator;
   cloneIssuer: GitHubTokenIssuer;
   sessionIssuer: GitHubTokenIssuer;
+  secretRegistry: BrokerSecretRegistry;
+  brokerUrl: string;
 };
 
 export function makeCreateSession(deps: CreateSessionDeps) {
@@ -42,13 +45,21 @@ export function makeCreateSession(deps: CreateSessionDeps) {
 
     const type = requireProviderType(account.providerType);
 
-    return provisionSession(deps.engine, deps.cloneIssuer, deps.sessionIssuer, {
-      account,
-      type,
-      name: input.name,
-      repo: input.repo,
-      sessionUuid: deps.ids.newId(),
-      permissionMode: input.permissionMode ?? "auto",
-    });
+    return provisionSession(
+      deps.engine,
+      deps.cloneIssuer,
+      deps.sessionIssuer,
+      deps.ids,
+      deps.secretRegistry,
+      {
+        account,
+        type,
+        name: input.name,
+        repo: input.repo,
+        sessionUuid: deps.ids.newId(),
+        permissionMode: input.permissionMode ?? "auto",
+        brokerUrl: deps.brokerUrl,
+      },
+    );
   };
 }

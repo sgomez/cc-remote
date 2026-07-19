@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeAccountRepository } from "../../../test/fake-account-repository";
+import { FakeBrokerSecretRegistry } from "../../../test/fake-broker-secret-registry";
 import { FakeContainerEngine } from "../../../test/fake-container-engine";
 import { FakeGitHubTokenIssuer } from "../../../test/fake-github-token-issuer";
 import { FakeIdGenerator } from "../../../test/fake-id-generator";
@@ -27,8 +28,17 @@ function setup() {
   const ids = new FakeIdGenerator("uuid");
   const cloneIssuer = new FakeGitHubTokenIssuer();
   const sessionIssuer = new FakeGitHubTokenIssuer();
-  const reset = makeResetSession({ accounts, engine, ids, cloneIssuer, sessionIssuer });
-  return { accounts, engine, ids, cloneIssuer, sessionIssuer, reset };
+  const secretRegistry = new FakeBrokerSecretRegistry();
+  const reset = makeResetSession({
+    accounts,
+    engine,
+    ids,
+    cloneIssuer,
+    sessionIssuer,
+    secretRegistry,
+    brokerUrl: "http://broker:4001",
+  });
+  return { accounts, engine, ids, cloneIssuer, sessionIssuer, secretRegistry, reset };
 }
 
 describe("reset-session", () => {
