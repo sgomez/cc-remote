@@ -10,8 +10,10 @@ import type { ProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
 import { buildCloneLabels, buildSessionLabels, workspaceVolumeName } from "../domain/session";
 import { buildCloneEnv, buildSessionEnv } from "../domain/session-env";
+import type { BrokerSecretRegistry } from "../ports/broker-secret-registry";
 import type { ContainerEngine } from "../ports/container-engine";
 import type { GitHubTokenIssuer } from "../ports/github-token-issuer";
+import type { IdGenerator } from "../ports/id-generator";
 
 export type ProvisionSessionParams = {
   account: Account;
@@ -20,12 +22,15 @@ export type ProvisionSessionParams = {
   repo: string;
   sessionUuid: string;
   permissionMode: string;
+  brokerUrl: string;
 };
 
 export async function provisionSession(
   engine: ContainerEngine,
   cloneIssuer: GitHubTokenIssuer,
   sessionIssuer: GitHubTokenIssuer,
+  ids: IdGenerator,
+  secretRegistry: BrokerSecretRegistry,
   params: ProvisionSessionParams,
 ): Promise<Session> {
   const { account, type, name, repo } = params;
@@ -34,6 +39,11 @@ export async function provisionSession(
 
   const { token: cloneToken } = await cloneIssuer.issueToken(repo);
   const { token: sessionToken } = await sessionIssuer.issueToken(repo);
+
+  const brokerSecret = ids.newSecret();
+  // Register before the clone starts so the broker is ready the moment the
+  // Session container comes up — a token request could arrive immediately.
+  secretRegistry.register(brokerSecret, name, repo);
 
   await engine.createVolume(workspaceVolume);
 
@@ -63,6 +73,8 @@ export async function provisionSession(
       sessionUuid: params.sessionUuid,
       githubToken: sessionToken,
       permissionMode: params.permissionMode,
+      brokerSecret,
+      brokerUrl: params.brokerUrl,
     }),
     labels: buildSessionLabels(labelInput),
     accountConfigVolume: accountConfigVolumeName(account.id),

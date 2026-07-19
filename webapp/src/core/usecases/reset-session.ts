@@ -8,6 +8,7 @@ import { requireProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
 import { workspaceVolumeName } from "../domain/session";
 import type { AccountRepository } from "../ports/account-repository";
+import type { BrokerSecretRegistry } from "../ports/broker-secret-registry";
 import type { ContainerEngine } from "../ports/container-engine";
 import type { GitHubTokenIssuer } from "../ports/github-token-issuer";
 import type { IdGenerator } from "../ports/id-generator";
@@ -24,6 +25,8 @@ export type ResetSessionDeps = {
   ids: IdGenerator;
   cloneIssuer: GitHubTokenIssuer;
   sessionIssuer: GitHubTokenIssuer;
+  secretRegistry: BrokerSecretRegistry;
+  brokerUrl: string;
 };
 
 export function makeResetSession(deps: ResetSessionDeps) {
@@ -41,13 +44,21 @@ export function makeResetSession(deps: ResetSessionDeps) {
     await deps.engine.removeContainer(input.name);
     await deps.engine.removeVolume(workspaceVolumeName(input.name));
 
-    return provisionSession(deps.engine, deps.cloneIssuer, deps.sessionIssuer, {
-      account,
-      type,
-      name: input.name,
-      repo: container.repo,
-      sessionUuid: deps.ids.newId(),
-      permissionMode: input.permissionMode ?? "auto",
-    });
+    return provisionSession(
+      deps.engine,
+      deps.cloneIssuer,
+      deps.sessionIssuer,
+      deps.ids,
+      deps.secretRegistry,
+      {
+        account,
+        type,
+        name: input.name,
+        repo: container.repo,
+        sessionUuid: deps.ids.newId(),
+        permissionMode: input.permissionMode ?? "auto",
+        brokerUrl: deps.brokerUrl,
+      },
+    );
   };
 }

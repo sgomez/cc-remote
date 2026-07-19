@@ -36,6 +36,10 @@ export { parseWorkspaceProbe, WORKSPACE_PROBE_SEPARATOR } from "./domain/workspa
 
 // Ports
 export type { AccountRepository } from "./ports/account-repository";
+export type {
+  BrokerSecretEntry,
+  BrokerSecretRegistry,
+} from "./ports/broker-secret-registry";
 export type { Clock } from "./ports/clock";
 export type {
   CloneContainerSpec,
@@ -68,6 +72,12 @@ export {
 } from "./usecases/follow-session-logs";
 export { makeListSessions } from "./usecases/list-sessions";
 export { type MarkAccountReadyInput, makeMarkAccountReady } from "./usecases/mark-account-ready";
+export {
+  BrokerTokenRefusedError,
+  type MintBrokerTokenDeps,
+  type MintBrokerTokenInput,
+  makeMintBrokerToken,
+} from "./usecases/mint-broker-token";
 export { makePollLogins } from "./usecases/poll-logins";
 export {
   makeReadSessionLogs,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeAccountRepository } from "../../../test/fake-account-repository";
+import { FakeBrokerSecretRegistry } from "../../../test/fake-broker-secret-registry";
 import { FakeContainerEngine } from "../../../test/fake-container-engine";
 import { FakeGitHubTokenIssuer } from "../../../test/fake-github-token-issuer";
 import { FakeIdGenerator } from "../../../test/fake-id-generator";
@@ -35,8 +36,17 @@ function setup(seed: Account[] = [account()]) {
   const ids = new FakeIdGenerator("uuid");
   const cloneIssuer = new FakeGitHubTokenIssuer();
   const sessionIssuer = new FakeGitHubTokenIssuer();
-  const create = makeCreateSession({ accounts, engine, ids, cloneIssuer, sessionIssuer });
-  return { accounts, engine, ids, cloneIssuer, sessionIssuer, create };
+  const secretRegistry = new FakeBrokerSecretRegistry();
+  const create = makeCreateSession({
+    accounts,
+    engine,
+    ids,
+    cloneIssuer,
+    sessionIssuer,
+    secretRegistry,
+    brokerUrl: "http://broker:4001",
+  });
+  return { accounts, engine, ids, cloneIssuer, sessionIssuer, secretRegistry, create };
 }
 
 const input = { name: "s1", repo: "o/r", accountId: "acc-1" };
@@ -85,6 +95,18 @@ describe("create-session", () => {
     expect(spec.env.ANTHROPIC_AUTH_TOKEN).toBe("sk-ds");
     expect(spec.accountConfigVolume).toBe("cc-remote-account-acc-1");
     expect(spec.remoteControl).toBe(false);
+  });
+
+  it("registers the broker secret and injects broker env vars", async () => {
+    await ctx.create(input);
+    // The FakeIdGenerator returns "secret-uuid-1" for newSecret().
+    expect(ctx.secretRegistry.lookedUpSecrets).toHaveLength(0); // lookup, not register
+
+    const spec = ctx.engine.runSessionSpecs[0];
+    expect(spec.env.CC_BROKER_SECRET).toBe("secret-uuid-1");
+    expect(spec.env.CC_BROKER_URL).toBe("http://broker:4001");
+    // The durable token is still present.
+    expect(spec.env.GITHUB_TOKEN).toBeTruthy();
   });
 
   it("leaves the clone helper (clone_failed) and no main container when clone fails", async () => {
