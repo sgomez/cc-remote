@@ -30,41 +30,28 @@ export const Route = createFileRoute("/bootstrap")({
     const { configured } = await fetchDeploymentState();
     if (configured) throw redirect({ to: "/login" });
 
-    // When a manifest key is present from the App Manifest Flow callback,
-    // load the pre-filled data on the server so the form renders immediately
-    // without an extra client-side fetch.
+    // The manifest key travels in the ?manifest= query when returning from the
+    // App Manifest Flow. The pre-filled fields are fetched client-side (in the
+    // component), not here: loadManifestResult is claim-token gated and the
+    // token lives in the browser's sessionStorage, which this server-side
+    // beforeLoad cannot read.
     const search = location.search as Record<string, unknown>;
     const key = search?.manifest as string | undefined;
-    if (key) {
-      const result = await loadManifestResult({ data: { key } });
-      if (result.ok) {
-        return {
-          manifestKey: key,
-          prefill: {
-            appId: result.githubAppId,
-            appSlug: result.githubAppSlug,
-            clientId: result.githubClientId,
-            clientSecret: result.githubClientSecret,
-            allowedUsers: result.allowedGithubUsers.join(", "),
-          },
-        };
-      }
-    }
-    return {};
+    return { manifestKey: key };
   },
   component: BootstrapPage,
 });
 
+type Prefill = {
+  appId: string;
+  appSlug: string;
+  clientId: string;
+  allowedUsers: string;
+};
+
 function BootstrapPage() {
   const routeContext = Route.useRouteContext() as {
     manifestKey?: string;
-    prefill?: {
-      appId: string;
-      appSlug: string;
-      clientId: string;
-      clientSecret: string;
-      allowedUsers: string;
-    };
   };
 
   const { search } = useLocation();
@@ -84,6 +71,33 @@ function BootstrapPage() {
   const [phase, setPhase] = useState<"token" | "choose" | "form" | "restarting">(initialPhase);
   const [error, setError] = useState(searchError || "");
   const [busy, setBusy] = useState(false);
+  const [prefill, setPrefill] = useState<Prefill | undefined>(undefined);
+
+  // Fetch the pre-filled App identity fields client-side, where the claim token
+  // (sessionStorage) needed to authorise loadManifestResult is available. If the
+  // token is missing the prefill stays empty; the operator can still save,
+  // because saveBootstrapConfig reads the manifest file server-side by key.
+  const manifestKey = routeContext.manifestKey;
+  useEffect(() => {
+    if (!manifestKey) return;
+    const stored =
+      typeof window !== "undefined" ? sessionStorage.getItem("cc_claim_token") || "" : "";
+    if (!stored) return;
+    let cancelled = false;
+    loadManifestResult({ data: { key: manifestKey, token: stored } }).then((result) => {
+      if (!cancelled && result.ok) {
+        setPrefill({
+          appId: result.githubAppId,
+          appSlug: result.githubAppSlug,
+          clientId: result.githubClientId,
+          allowedUsers: result.allowedGithubUsers.join(", "),
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [manifestKey]);
 
   const submitToken = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,12 +189,14 @@ function BootstrapPage() {
     return <ChoiceScreen onRegister={registerNewApp} onManual={() => setPhase("form")} />;
   }
 
-  // Configuration form
+  // Configuration form. The key remounts the form once the async prefill lands
+  // so its fields re-initialise from the loaded values (they seed useState).
   return (
     <BootstrapForm
+      key={prefill ? "prefilled" : "empty"}
       token={token}
-      prefill={routeContext.prefill}
-      manifestKey={routeContext.manifestKey}
+      prefill={prefill}
+      manifestKey={manifestKey}
       onSaved={() => setPhase("restarting")}
     />
   );
@@ -323,20 +339,17 @@ function BootstrapForm({
   onSaved,
 }: {
   token: string;
-  prefill?: {
-    appId: string;
-    appSlug: string;
-    clientId: string;
-    clientSecret: string;
-    allowedUsers: string;
-  };
+  prefill?: Prefill;
   manifestKey?: string;
   onSaved: () => void;
 }) {
   const [appId, setAppId] = useState(prefill?.appId ?? "");
   const [appSlug, setAppSlug] = useState(prefill?.appSlug ?? "");
   const [clientId, setClientId] = useState(prefill?.clientId ?? "");
-  const [clientSecret, setClientSecret] = useState(prefill?.clientSecret ?? "");
+  // In the manifest flow the client secret is never sent to the browser (it is
+  // read server-side from the manifest file on save), so this field stays empty
+  // and read-only during review.
+  const [clientSecret, setClientSecret] = useState("");
   const [privateKeyBase64, setPrivateKeyBase64] = useState("");
   const [privateKeyFileName, setPrivateKeyFileName] = useState("");
   const [allowedUsers, setAllowedUsers] = useState(prefill?.allowedUsers ?? "");

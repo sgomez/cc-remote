@@ -159,6 +159,20 @@ export const saveBootstrapConfig = createServerFn({ method: "POST" })
 
     // Restrictive permissions: the file holds the App private key.
     writeFileSync(BOOTSTRAP_FILE, JSON.stringify(record, null, 2), { mode: 0o600 });
+
+    // The manifest result file holds the App private key and OAuth client
+    // secret in plaintext. Once its contents have been consumed into the
+    // Bootstrap File it must not linger on the data volume. Delete it now that
+    // the save has succeeded; a failed save above returns early and keeps the
+    // file so the operator can retry.
+    if (data.manifestKey) {
+      try {
+        unlinkSync(join(MANIFEST_RESULTS_DIR, `${data.manifestKey}.json`));
+      } catch {
+        // Already gone (double-submit) or never existed — nothing to clean up.
+      }
+    }
+
     console.log(
       "[bootstrap] Configuration saved successfully. Exiting process to trigger container restart...",
     );
@@ -278,16 +292,31 @@ export const exchangeManifestCode = createServerFn({ method: "POST" })
 /**
  * Load the pre-filled fields from a manifest exchange result.
  *
- * Reads the temp file created by `exchangeManifestCode` and returns the
- * non-sensitive fields (everything except the private key). Returns `ok:
- * false` when the key is invalid or the file has been cleaned up.
+ * Gated by the claim token: the manifest key travels in the
+ * `/bootstrap?manifest=<key>` URL, so without this check anyone holding that
+ * URL could retrieve the App identity fields. The token is verified with the
+ * same constant-time comparison the rest of the bootstrap flow uses; possession
+ * of the claim token is the only identity proof this unauthenticated screen has.
+ * Uses POST (not GET) so the token is not carried in the request URL.
  *
- * The private key is intentionally excluded from the response — it must
- * never reach the browser.
+ * Both the private key AND the OAuth client secret are intentionally excluded
+ * from the response — neither is needed to render the review form (the manifest
+ * flow submits `manifestKey`, and the server reads those fields straight from
+ * the temp file), and neither should reach the browser.
  */
-export const loadManifestResult = createServerFn({ method: "GET" })
-  .validator((data: { key: string }) => data)
+export const loadManifestResult = createServerFn({ method: "POST" })
+  .validator((data: { key: string; token: string }) => data)
   .handler(async ({ data }) => {
+    let stored: string | undefined;
+    try {
+      stored = readFileSync(CLAIM_TOKEN_FILE, "utf-8").trim();
+    } catch {
+      // File doesn't exist or can't be read.
+    }
+    if (!verifyClaimTokenPure(stored, data.token)) {
+      return { ok: false } as const;
+    }
+
     try {
       const content = readFileSync(join(MANIFEST_RESULTS_DIR, `${data.key}.json`), "utf-8");
       const record: BootstrapRecord = JSON.parse(content);
@@ -296,7 +325,6 @@ export const loadManifestResult = createServerFn({ method: "GET" })
         githubAppId: record.githubAppId,
         githubAppSlug: record.githubAppSlug,
         githubClientId: record.githubClientId,
-        githubClientSecret: record.githubClientSecret,
         allowedGithubUsers: record.allowedGithubUsers,
       } as const;
     } catch {
