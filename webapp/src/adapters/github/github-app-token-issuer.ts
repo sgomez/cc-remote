@@ -10,6 +10,7 @@
 import { createSign } from "node:crypto";
 import { RepositoryNotGrantedError } from "../../core/domain/errors";
 import type {
+  GitHubInstallation,
   GitHubTokenCredential,
   GitHubTokenIssuer,
 } from "../../core/ports/github-token-issuer";
@@ -129,6 +130,91 @@ export function createGitHubAppTokenIssuer(config: GitHubAppTokenIssuerConfig): 
         token: tokenData.token,
         expiresAt: parseExpiry(tokenData.expires_at),
       };
+    },
+
+    async listInstallations(): Promise<GitHubInstallation[]> {
+      const jwt = signAppJwt(config.appId, privateKeyPem);
+
+      const res = await fetch("https://api.github.com/app/installations", {
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(
+          `GitHub App: failed to list installations (HTTP ${res.status})${body ? `: ${body}` : ""}`,
+        );
+      }
+
+      const installations = (await res.json()) as Array<{
+        id: number;
+        account: { login: string; avatar_url: string; type: "User" | "Organization" };
+        repository_selection: "all" | "selected";
+        html_url: string;
+      }>;
+
+      const result: GitHubInstallation[] = [];
+
+      for (const inst of installations) {
+        const repos: string[] = [];
+
+        if (inst.repository_selection === "selected") {
+          // Mint a short-lived installation token to list the granted repos.
+          // We scope it minimally: no specific repository, no extra permissions
+          // beyond what the app already declares.
+          const tokenRes = await fetch(
+            `https://api.github.com/app/installations/${inst.id}/access_tokens`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${jwt}`,
+                Accept: "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({}),
+            },
+          );
+
+          if (tokenRes.ok) {
+            const tokenData = (await tokenRes.json()) as { token: string };
+            const reposRes = await fetch("https://api.github.com/installation/repositories", {
+              headers: {
+                Authorization: `Bearer ${tokenData.token}`,
+                Accept: "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+              },
+            });
+
+            if (reposRes.ok) {
+              const reposData = (await reposRes.json()) as {
+                repositories: Array<{ full_name: string }>;
+              };
+              repos.push(...reposData.repositories.map((r) => r.full_name));
+            }
+            // If repository listing fails for one installation, skip it and
+            // continue with the rest — an empty repo list is still informative.
+          }
+        }
+
+        result.push({
+          id: inst.id,
+          account: {
+            login: inst.account.login,
+            avatarUrl: inst.account.avatar_url,
+            type: inst.account.type,
+          },
+          repositorySelection: inst.repository_selection,
+          repositories: repos,
+          htmlUrl: inst.html_url,
+        });
+      }
+
+      return result;
     },
   };
 }

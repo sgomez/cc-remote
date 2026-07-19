@@ -46,6 +46,7 @@ export type {
   SessionContainerSpec,
 } from "./ports/container-engine";
 export type {
+  GitHubInstallation,
   GitHubTokenCredential,
   GitHubTokenIssuer,
 } from "./ports/github-token-issuer";

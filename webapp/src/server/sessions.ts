@@ -40,6 +40,11 @@ function oauthTokenIssuer(): GitHubTokenIssuer {
       // OAuth tokens do not expire — use a far-future sentinel.
       return { token, expiresAt: new Date("2099-01-01T00:00:00.000Z") };
     },
+    // This issuer is for Session credentials only; installation listing uses
+    // the App JWT adapter in server/repositories.ts.
+    async listInstallations() {
+      return [];
+    },
   };
 }
 
