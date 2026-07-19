@@ -161,9 +161,7 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
         );
       }
     } catch {
-      errors.push(
-        "GITHUB_APP_PRIVATE_KEY must be a valid base64-encoded PEM private key",
-      );
+      errors.push("GITHUB_APP_PRIVATE_KEY must be a valid base64-encoded PEM private key");
     }
   }
   const githubAppSlug = require("GITHUB_APP_SLUG");

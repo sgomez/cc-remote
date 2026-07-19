@@ -11,7 +11,9 @@ const VALID: NodeJS.ProcessEnv = {
   ALLOWED_GITHUB_USERS: "sgomez, alice",
   DOCKER_HOST: "tcp://docker-socket-proxy:2375",
   GITHUB_APP_ID: "123456",
-  GITHUB_APP_PRIVATE_KEY: Buffer.from("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----").toString("base64"),
+  GITHUB_APP_PRIVATE_KEY: Buffer.from(
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----",
+  ).toString("base64"),
   GITHUB_APP_SLUG: "cc-remote-web-manager",
 };
 
@@ -171,9 +173,9 @@ describe("loadDeploymentConfig", () => {
   });
 
   it("rejects a non-numeric GITHUB_APP_ID", () => {
-    expect(() =>
-      loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" }),
-    ).toThrow(/GITHUB_APP_ID/);
+    expect(() => loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" })).toThrow(
+      /GITHUB_APP_ID/,
+    );
   });
 
   it("rejects a base64 GITHUB_APP_PRIVATE_KEY that does not decode to a PEM", () => {
