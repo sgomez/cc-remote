@@ -32,3 +32,24 @@ An ephemeral container created during registration of an `oauth` Account. It mou
 
 ### Session
 A work environment: one agent container plus its own workspace volume, created from a repository and an Account. Docker itself is the source of truth for Sessions: they exist exactly as long as their labelled container exists, and the database stores nothing about them. Every Session offers a web terminal; Sessions whose Account's Provider Type supports it additionally run Remote Control.
+
+### GitHub App
+Authenticates the deployment against GitHub as a single entity rather than impersonating a user. A GitHub App replaces the previous OAuth App: its user-to-server flow uses the same OAuth endpoints and is handled by the same better-auth `github` provider, but the `repo` scope is removed from the authorization URL because GitHub Apps ignore scope — permissions come from the App's own configuration. The App owns a private key that is used server-side to mint installation tokens, and this key never enters any agent container.
+
+### Installation Token
+A short-lived credential (one hour) scoped to a single GitHub repository. It carries only the permissions the App declares — repository contents write and pull requests write — and is minted by the `GitHubTokenIssuer` port against GitHub's `POST /app/installations/{id}/access_tokens` endpoint. Installation tokens expire after one hour and are never stored; they are fetched on demand from the credential broker.
+
+### Credential Broker
+A separate HTTP server (`webapp/server/plugins/broker.ts`) that runs inside the web-manager process on port `4001`, reachable only from the agents network. It accepts a per-Session broker secret and returns a freshly minted installation token scoped to that Session's repository. The broker is never published through Caddy or the compose ports and is unreachable from the control network or the public internet. Its decision logic lives in the `mint-broker-token` core use case, which validates the secret against the `BrokerSecretRegistry`, verifies the Session still exists, and delegates to the `GitHubTokenIssuer` port.
+
+### Per-Session Broker Secret (`CC_BROKER_SECRET`)
+A random value generated at Session provision time, recorded by the `BrokerSecretRegistry` port (in-memory), and injected into the Session container's environment alongside the broker's address (`CC_BROKER_URL`). It replaces the durable `GITHUB_TOKEN` as what the container carries. Its blast radius is bounded to "this Session's repository, for one hour at a time" — a compromised Session can call the broker to mint installation tokens only for its own repository. The broker refuses all requests without disclosing which condition failed (unknown secret, destroyed Session, or mismatched repo). The clone helper bypasses the broker and carries a one-shot installation token via `GITHUB_TOKEN` directly, since it is ephemeral and single-purpose.
+
+### Repositories Screen
+A UI page in web-manager listing which repositories the deployment's GitHub App has been granted access to. It shows the installation's `repository_selection` (`all` or `selected`) and offers a button that opens GitHub's own installation flow. Creating a Session refuses repositories outside the granted set with an error directing the user to this screen.
+
+### GitHubTokenIssuer
+A core port (`core/ports/github-token-issuer.ts`) exposing `issueToken(repo)` returning `{ token, expiresAt }` and `listInstallations()` returning `GitHubInstallation[]`. The port abstracts whether tokens come from the GitHub App or the previous OAuth token adapter; the adapter implementing it signs a JWT with the App's private key and calls GitHub's REST API. This is the only component that can mint tokens — it lives in web-manager, never in an agent container.
+
+### BrokerSecretRegistry
+A core port (`core/ports/broker-secret-registry.ts`) that stores per-Session broker secrets in memory. Secrets are registered at Session provision time and looked up by the `mint-broker-token` use case when the broker receives a request. The registry is in-memory only: on a web-manager restart all registered secrets are lost and running Sessions must reconnect. This is acceptable because the agent's credential helper retries on failure and the Session is recreated on the next start.

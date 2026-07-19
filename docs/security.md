@@ -56,9 +56,28 @@ Every Session exposes an unauthenticated, writable `ttyd` shell on port `7681`, 
 
 > The obvious fix does not work: `enable_icc=false` on the agents bridge was tested and rejected: Docker then drops **all** container-to-container traffic on that bridge, with no way to exempt one container, which kills the web terminal itself. Closing this properly needs a network per Session or `DOCKER-USER` iptables rules; neither is implemented.
 
-### 2. A Session's `GITHUB_TOKEN` is your full OAuth token
+### 2. What a compromised Session actually gets
 
-It is not scoped to the repository the Session cloned; it is the repo-scoped token from *your* GitHub login, so an agent holding it can read and push to **every repository you can reach**, personal and organizational. **Running a repo in a Session grants that repo's code access to all of your other repos.** You are trusting the code the agent runs, and anything it pulls in (a dependency, a prompt injection in a file it reads), with your GitHub account's reach. If that is too much, do not point a Session at a repository you do not trust.
+The original architecture review finding **S3** ("The injected `GITHUB_TOKEN` is the user's full repo-scoped OAuth token") was the last accepted-risk item of its class. It is now **closed**: Sessions no longer carry a durable `GITHUB_TOKEN`.
+
+What changed:
+
+* A **GitHub App** replaces the OAuth App. Sign-in works identically (better-auth's `github` provider uses the same endpoints), but the `repo` scope is removed from the authorization URL because GitHub Apps ignore it — permissions come from the App's own configuration.
+* Git credentials are fetched on **demand** from the **credential broker**: an internal HTTP server on the agents network (`:4001`) that is never exposed through Caddy or the compose published ports. It mints per-repository **installation tokens** that expire one hour after being issued.
+* The Session environment carries `CC_BROKER_SECRET` (a random per-Session value generated at provision time) and `CC_BROKER_URL` (the broker's address on the agents network). It carries **no** `GITHUB_TOKEN`.
+* The credential helper in `entrypoint.sh` calls the broker on each git operation, caches the returned token in memory, and renews it with a 5-minute safety margin before expiry. A token that has expired is never handed to git.
+* The clone helper (ephemeral, single-purpose, lives for the duration of one clone) still receives a one-shot installation token via `GITHUB_TOKEN`. The Login Container receives no GitHub credential of any kind.
+
+#### Honest limits of the new design
+
+What was bought is a **reduction in blast radius and lifetime**, not the elimination of secrets from agent containers:
+
+* The broker secret is **still a durable value** inside the container. A compromised Session can still reach the broker and obtain a valid installation token for its repository. It cannot reach a different Session's repository, and the token it gets covers **only** this Session's repository with **only** the permissions the App declares (contents write + pull requests write).
+* A compromised Session **cannot** obtain a token for any other repository. The broker reads the Session's own repository from its provisioning record, never from the request. Every refusal returns the same `403` with no indication of which condition failed (unknown secret, destroyed Session, mismatched repo).
+* The broker is **unreachable from outside the agents network**. It binds to all interfaces on `:4001` but that port is not published in the compose file or exposed through Caddy. A Session on the agents network can reach it by Docker's internal DNS; nothing on the control network or the public internet can.
+* The one-hour expiry means a leaked token from a compromised Session is only usable for that window — but within that window it grants the full declared permissions on the repository.
+* Revoking the GitHub App installation on GitHub stops new tokens from being issued immediately. Existing minted tokens continue to be valid until they expire naturally.
+* Pre-existing Sessions created before the migration keep their old `GITHUB_TOKEN` until they are reset. Only Sessions created after the migration benefit from the new model.
 
 ### 3. The resource cap is a blast-radius limit, not a fleet total
 
