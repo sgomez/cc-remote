@@ -86,6 +86,13 @@ services:
       - AGENT_MEMORY_LIMIT=${AGENT_MEMORY_LIMIT:-2g}
       - AGENT_CPU_LIMIT=${AGENT_CPU_LIMIT:-2}
       - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
+      # GitHub App identifiers for token-minting. GITHUB_APP_PRIVATE_KEY is
+      # base64-encoded (config.js encodes a multi-line PEM so it survives as a
+      # single .env line). Missing or malformed values trigger validate:env to
+      # fail at container start rather than at first clone.
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
       - PERMISSION_MODE=${PERMISSION_MODE:-auto}
       - GIT_USER_NAME=${GIT_USER_NAME}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL}

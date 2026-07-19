@@ -10,6 +10,11 @@ const VALID: NodeJS.ProcessEnv = {
   GITHUB_CLIENT_SECRET: "client-secret",
   ALLOWED_GITHUB_USERS: "sgomez, alice",
   DOCKER_HOST: "tcp://docker-socket-proxy:2375",
+  GITHUB_APP_ID: "123456",
+  GITHUB_APP_PRIVATE_KEY: Buffer.from(
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----",
+  ).toString("base64"),
+  GITHUB_APP_SLUG: "cc-remote-web-manager",
 };
 
 describe("loadDeploymentConfig", () => {
@@ -21,6 +26,10 @@ describe("loadDeploymentConfig", () => {
     expect(cfg.githubClientSecret).toBe("client-secret");
     expect(cfg.allowedGithubUsers).toEqual(["sgomez", "alice"]);
     expect(cfg.dockerHost).toBe("tcp://docker-socket-proxy:2375");
+    expect(cfg.githubAppId).toBe("123456");
+    expect(cfg.githubAppPrivateKey).toBeTruthy();
+    expect(cfg.githubAppPrivateKey).not.toBe("");
+    expect(cfg.githubAppSlug).toBe("cc-remote-web-manager");
   });
 
   it("applies defaults for the optional infra vars", () => {
@@ -61,6 +70,9 @@ describe("loadDeploymentConfig", () => {
     expect(errors.some((m) => m.includes("GITHUB_CLIENT_SECRET"))).toBe(true);
     expect(errors.some((m) => m.includes("ALLOWED_GITHUB_USERS"))).toBe(true);
     expect(errors.some((m) => m.includes("DOCKER_HOST"))).toBe(true);
+    expect(errors.some((m) => m.includes("GITHUB_APP_ID"))).toBe(true);
+    expect(errors.some((m) => m.includes("GITHUB_APP_PRIVATE_KEY"))).toBe(true);
+    expect(errors.some((m) => m.includes("GITHUB_APP_SLUG"))).toBe(true);
     // The message string carries all of them for the operator to read.
     expect((error as DeploymentConfigError).message).toContain("BETTER_AUTH_URL");
     expect((error as DeploymentConfigError).message).toContain("GITHUB_CLIENT_ID");
@@ -139,5 +151,45 @@ describe("loadDeploymentConfig", () => {
       CLAUDE_JSON_PATH: "/home/u/.claude.json",
     });
     expect(cfg).not.toHaveProperty("hostClaude");
+  });
+
+  it("rejects a missing or empty GitHub App configuration at startup", () => {
+    // Mirror of the agent-limit rejection pattern: missing vars must fail
+    // loud at validate:env time, not silently at first clone.
+    let errors: string[] = [];
+    try {
+      loadDeploymentConfig({
+        ...VALID,
+        GITHUB_APP_ID: "",
+        GITHUB_APP_PRIVATE_KEY: "   ",
+        GITHUB_APP_SLUG: "",
+      });
+    } catch (e) {
+      errors = (e as DeploymentConfigError).errors;
+    }
+    expect(errors.some((m) => m.includes("GITHUB_APP_ID"))).toBe(true);
+    expect(errors.some((m) => m.includes("GITHUB_APP_PRIVATE_KEY"))).toBe(true);
+    expect(errors.some((m) => m.includes("GITHUB_APP_SLUG"))).toBe(true);
+  });
+
+  it("rejects a non-numeric GITHUB_APP_ID", () => {
+    expect(() => loadDeploymentConfig({ ...VALID, GITHUB_APP_ID: "not-a-number" })).toThrow(
+      /GITHUB_APP_ID/,
+    );
+  });
+
+  it("rejects a base64 GITHUB_APP_PRIVATE_KEY that does not decode to a PEM", () => {
+    expect(() =>
+      loadDeploymentConfig({
+        ...VALID,
+        GITHUB_APP_PRIVATE_KEY: Buffer.from("not a pem").toString("base64"),
+      }),
+    ).toThrow(/GITHUB_APP_PRIVATE_KEY/);
+  });
+
+  it("rejects an unparseable (non-base64) GITHUB_APP_PRIVATE_KEY", () => {
+    expect(() =>
+      loadDeploymentConfig({ ...VALID, GITHUB_APP_PRIVATE_KEY: "!!!not-base64!!!" }),
+    ).toThrow(/GITHUB_APP_PRIVATE_KEY/);
   });
 });

@@ -38,6 +38,12 @@ export type DeploymentConfig = {
   databasePath: string;
   puid: string;
   pgid: string;
+  /** GitHub App numeric ID for JWT signing. */
+  githubAppId: string;
+  /** Base64-encoded PEM private key for GitHub App JWT signing. Empty if not configured. */
+  githubAppPrivateKey: string;
+  /** GitHub App slug for building installation URLs. */
+  githubAppSlug: string;
 };
 
 /**
@@ -137,6 +143,28 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
     }
   }
 
+  // GitHub App configuration for token-minting. Missing or malformed values are a
+  // hard startup error: without this config every Session that tries to clone a repo
+  // will fail at provision time with an opaque Docker error, and the operator may not
+  // connect the two. Fail loud at start instead.
+  const githubAppId = require("GITHUB_APP_ID");
+  if (githubAppId && !/^\d+$/.test(githubAppId)) {
+    errors.push(`GITHUB_APP_ID must be a numeric GitHub App ID (got "${githubAppId}")`);
+  }
+  const githubAppPrivateKey = require("GITHUB_APP_PRIVATE_KEY");
+  if (githubAppPrivateKey) {
+    // Buffer.from(data, "base64") never throws on invalid input in Node.js — it
+    // silently ignores non-base64 characters. The PEM-header regex on the decoded
+    // string is the real guard. No try/catch needed here.
+    const decoded = Buffer.from(githubAppPrivateKey, "base64").toString("utf8");
+    if (!/^-----BEGIN\s/.test(decoded)) {
+      errors.push(
+        "GITHUB_APP_PRIVATE_KEY must be a base64-encoded PEM (decoded value does not look like a private key)",
+      );
+    }
+  }
+  const githubAppSlug = require("GITHUB_APP_SLUG");
+
   if (errors.length > 0) throw new DeploymentConfigError(errors);
 
   return {
@@ -150,5 +178,8 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
     databasePath: trimmed(env.DATABASE_PATH) || DEFAULTS.databasePath,
     puid,
     pgid,
+    githubAppId,
+    githubAppPrivateKey,
+    githubAppSlug,
   };
 }

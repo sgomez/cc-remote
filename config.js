@@ -248,24 +248,66 @@ async function main() {
     homepageUrl = `${scheme}://${domain}`;
   }
 
-  console.log('\n\x1b[36m[Instruction] To configure GitHub OAuth login, create a new OAuth Application on GitHub:');
-  console.log('  1. Open: \x1b[34mhttps://github.com/settings/applications/new\x1b[36m');
+  console.log('\n\x1b[36m[Instruction] To configure GitHub login, your GitHub App provides the OAuth credentials:');
+  console.log('  1. Open: \x1b[34mhttps://github.com/settings/apps/new\x1b[36m');
   console.log('  2. Set Application Name to: \x1b[32mcc-remote-web-manager\x1b[36m');
   console.log(`  3. Set Homepage URL to: \x1b[32m${homepageUrl}\x1b[36m`);
   console.log(`  4. Set Authorization callback URL to: \x1b[32m${callbackUrl}\x1b[36m`);
-  console.log('  5. Click "Register application". Then copy the Client ID and generate a Client Secret.\n\x1b[0m');
+  console.log('  5. Under "Permissions", grant "Contents: write" and "Pull requests: write".');
+  console.log('  6. Under "Installation", enable your account/organisation.');
+  console.log('  7. After creation, copy the values from the App\'s "General" page.');
+  console.log('     - App ID is a numeric ID in the "About" section.');
+  console.log('     - Client ID is under "Identification".');
+  console.log('     - Generate and download a private key. Keep the PEM file safe.\n\x1b[0m');
 
   const defaultClientId = config.web?.clientId || '';
-  const clientIdInput = await question(`Enter your GitHub OAuth Client ID [${defaultClientId}]: `);
+  const clientIdInput = await question(`Enter your GitHub App Client ID [${defaultClientId}]: `);
   const clientId = clientIdInput === '' ? defaultClientId : clientIdInput.trim();
 
   const defaultClientSecret = config.web?.clientSecret || '';
-  const clientSecretInput = await questionSecret(`Enter your GitHub OAuth Client Secret [${defaultClientSecret ? 'HIDDEN' : 'none'}]: `);
+  const clientSecretInput = await questionSecret(`Enter your GitHub App Client Secret [${defaultClientSecret ? 'HIDDEN' : 'none'}]: `);
   const clientSecret = clientSecretInput === '' ? defaultClientSecret : clientSecretInput.trim();
 
   const defaultAllowedUsers = config.web?.allowedUsers || '';
   const allowedUsersInput = await question(`Enter allowed GitHub usernames (comma-separated, e.g., sgomez, user2) [${defaultAllowedUsers}]: `);
   const allowedUsers = allowedUsersInput === '' ? defaultAllowedUsers : allowedUsersInput.trim();
+
+  // --- GitHub App Identifiers (beyond the OAuth credentials above) --------------
+  console.log('\n\x1b[35m--- GitHub App Identifiers ---\x1b[0m');
+  console.log('\x1b[36mThese additional identifiers and the private key are needed for token-minting.');
+  console.log('The App ID and slug are on the App\'s "General" settings page.\n\x1b[0m');
+
+  const defaultAppId = config.github?.appId || '';
+  const appIdInput = await question(`Enter your GitHub App ID (numeric) [${defaultAppId}]: `);
+  const appId = appIdInput === '' ? defaultAppId : appIdInput.trim();
+
+  const defaultSlug = config.github?.slug || '';
+  const slugInput = await question(`Enter your GitHub App Slug (from the URL, e.g., "cc-remote-web-manager") [${defaultSlug}]: `);
+  const slug = slugInput === '' ? defaultSlug : slugInput.trim();
+
+  // Multi-line private key: ask for a file path first, fall back to paste.
+  let privateKey = config.github?.privateKey || '';
+  if (!privateKey) {
+    const keyPathInput = await question(`Enter path to your GitHub App private key PEM file: `);
+    const keyPath = keyPathInput.trim();
+    if (keyPath) {
+      privateKey = fs.readFileSync(keyPath, 'utf8').trim();
+    } else {
+      console.log('Paste the private key below (multi-line). When done, type END on its own line and press Enter:');
+      const lines = [];
+      await new Promise((resolve) => {
+        rl.on('line', function onLine(line) {
+          if (line.trim() === 'END') {
+            rl.removeListener('line', onLine);
+            resolve();
+          } else {
+            lines.push(line);
+          }
+        });
+      });
+      privateKey = lines.join('\n').trim();
+    }
+  }
 
   // Automatic Host & Core Resolutions. Everything below is derived or defaulted —
   // no prompt. Sessions are created in the web UI (each one names itself, picks its
@@ -303,6 +345,11 @@ async function main() {
         httpsPort: httpsPort
       }
     },
+    github: {
+      appId: appId,
+      slug: slug,
+      privateKey: privateKey
+    },
     user: {
       puid: hostUid,
       pgid: hostGid
@@ -319,6 +366,10 @@ async function main() {
 
   // Save config.json
   fs.writeFileSync(configFile, JSON.stringify(finalConfig, null, 2), 'utf8');
+  // S4 hardening: this file holds the GitHub OAuth client secret and the GitHub App
+  // private key in plain text. 0600 so only the owner (the host user this container
+  // was run as, via HOST_UID/HOST_GID) can read it, not every local user on the box.
+  fs.chmodSync(configFile, 0o600);
   console.log(`\n\x1b[32m[Success] Configuration saved to ${configFile}\x1b[0m`);
 
   // Calculate port bind string
@@ -328,6 +379,9 @@ async function main() {
   // GitHub OAuth callback against. Always non-empty (homepageUrl covers the
   // Caddy-fronted https case and the local http case). Replaces the legacy BASE_URL.
   const betterAuthUrl = homepageUrl;
+
+  // Base64-encode the private key so it survives as a single-line .env value.
+  const privateKeyB64 = privateKey ? Buffer.from(privateKey, 'utf8').toString('base64') : '';
 
   // Build .env file contents. Infra only — provider/account data lives in the web
   // UI + SQLite, and every Session's repo/name/identity is per-session state held
@@ -350,6 +404,11 @@ async function main() {
     `PGID="${hostGid}"`,
     `BETTER_AUTH_SECRET="${betterAuthSecret}"`,
     ``,
+    `# GitHub App identifiers for token-minting (installed alongside the OAuth credentials above).`,
+    `GITHUB_APP_ID="${appId}"`,
+    `GITHUB_APP_PRIVATE_KEY="${privateKeyB64}"`,
+    `GITHUB_APP_SLUG="${slug}"`,
+    ``,
     `# Per-container agent resource caps, derived from this host by config.js (see the`,
     `# "resources" block in config.json to change them — editing THIS file won't survive`,
     `# a ./setup.sh rerun). Memory accepts human units (512m, 2g, 1.5g) or raw bytes;`,
@@ -359,6 +418,10 @@ async function main() {
   ].join('\n') + '\n';
 
   fs.writeFileSync('.env', envContent, 'utf8');
+  // S4 hardening: same reasoning as config.json above — this file holds
+  // BETTER_AUTH_SECRET, the GitHub OAuth client secret and the GitHub App
+  // private key in plain text.
+  fs.chmodSync('.env', 0o600);
   console.log('\x1b[32m[Success] Environment variables compiled to .env\x1b[0m\n');
 
   rl.close();
