@@ -29,7 +29,13 @@ const sessionSpec: SessionContainerSpec = {
   repo: "octocat/hello",
   accountId: "acc-1",
   workspaceVolume: "cc-remote-workspace-demo",
-  env: { GITHUB_TOKEN: "tok", SESSION_NAME: "demo", ANTHROPIC_BASE_URL: "https://x" },
+  env: {
+    GITHUB_REPO: "octocat/hello",
+    SESSION_NAME: "demo",
+    ANTHROPIC_BASE_URL: "https://x",
+    CC_BROKER_SECRET: "bs-1",
+    CC_BROKER_URL: "http://web-manager:4001",
+  },
   labels: { "cc-remote-session": "true", "cc-remote-session-name": "demo" },
   accountConfigVolume: "cc-remote-account-acc-1",
   remoteControl: false,
@@ -109,9 +115,15 @@ describe("buildSessionCreateOptions — config-volume account", () => {
     expect(env).toContain("PUID=1000");
     expect(env).toContain("PGID=1000");
     expect(env).toContain("GIT_USER_NAME=Bot");
-    expect(env).toContain("GITHUB_TOKEN=tok");
+    expect(env).toContain("CC_BROKER_SECRET=bs-1");
+    expect(env).toContain("CC_BROKER_URL=http://web-manager:4001");
     expect(env).toContain("ANTHROPIC_BASE_URL=https://x");
     expect(env).toContain(`${ACCOUNT_CONFIG_DIR_ENV}=${ACCOUNT_CONFIG_MOUNT}`);
+  });
+
+  it("injects NO durable GITHUB_TOKEN into the Session container", () => {
+    const env = opts.Env ?? [];
+    expect(env.some((e) => e.startsWith("GITHUB_TOKEN="))).toBe(false);
   });
 
   it("carries the hardening flags and network", () => {

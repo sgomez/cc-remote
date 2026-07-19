@@ -96,10 +96,89 @@ if [ ! -f "/home/node/.claude.json" ]; then
     fi
 fi
 
-# Map Git requests to use the GITHUB_TOKEN transparently, via a credential helper that
-# reads the token from the environment at use time instead of embedding it in gitconfig.
-if [ -n "$GITHUB_TOKEN" ]; then
-    git config --global credential."https://github.com".helper '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f'
+# Git credential helper that obtains installation tokens from the broker on demand
+# instead of carrying a durable GITHUB_TOKEN in the environment. The token is cached
+# in memory (via a temp file) and renewed 5 minutes before the stated expiry, so a
+# long push does not hand an already-expired credential to Git.
+#
+# Runs when the Session carries the broker secret and URL (issue #32/33). The clone
+# helper gets a one-shot token via GITHUB_TOKEN directly; this path is for the
+# long-running Session container.
+if [ -n "$CC_BROKER_SECRET" ] && [ -n "$CC_BROKER_URL" ]; then
+    cat > /home/node/.local/bin/git-credential-broker <<'BROKER_EOF'
+#!/usr/bin/env node
+const { readFileSync, writeFileSync, existsSync } = require("fs");
+const { request } = require(
+  process.env.CC_BROKER_URL.startsWith("https") ? "https" : "http",
+);
+
+const cacheFile = "/tmp/gh-token-cache.json";
+const now = Date.now();
+const marginMs = 5 * 60 * 1000; // renew 5 min before expiry
+
+// Return a cached token if it is still fresh.
+try {
+  if (existsSync(cacheFile)) {
+    const cache = JSON.parse(readFileSync(cacheFile, "utf8"));
+    const expiresAt = new Date(cache.expiresAt).getTime();
+    if (cache.token && expiresAt - marginMs > now) {
+      console.log("username=x-access-token");
+      console.log("password=" + cache.token);
+      process.exit(0);
+    }
+  }
+} catch (_) { /* corrupt cache -- refetch */ }
+
+// Fetch a fresh token from the broker.
+const url = new URL(process.env.CC_BROKER_URL);
+const body = JSON.stringify({ secret: process.env.CC_BROKER_SECRET });
+
+const opts = {
+  hostname: url.hostname,
+  port: url.port || (url.protocol === "https:" ? 443 : 80),
+  path: url.pathname || "/",
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Content-Length": Buffer.byteLength(body),
+  },
+};
+
+const req = request(opts, function (res) {
+  let data = "";
+  res.on("data", function (chunk) { data += chunk; });
+  res.on("end", function () {
+    if (res.statusCode !== 200) {
+      process.stderr.write(
+        "credential-broker: refused (HTTP " + res.statusCode + ")\n",
+      );
+      process.exit(1);
+    }
+    try {
+      const cred = JSON.parse(data);
+      if (!cred.token) throw new Error("no token in response");
+      writeFileSync(cacheFile, JSON.stringify(cred), "utf8");
+      console.log("username=x-access-token");
+      console.log("password=" + cred.token);
+    } catch (e) {
+      process.stderr.write(
+        "credential-broker: bad response: " + e.message + "\n",
+      );
+      process.exit(1);
+    }
+  });
+});
+req.on("error", function (e) {
+  process.stderr.write(
+    "credential-broker: unreachable: " + e.message + "\n",
+  );
+  process.exit(1);
+});
+req.write(body);
+req.end();
+BROKER_EOF
+    chmod +x /home/node/.local/bin/git-credential-broker
+    git config --global credential."https://github.com".helper "/home/node/.local/bin/git-credential-broker"
     git config --global url."https://github.com/".insteadOf "git@github.com:"
 fi
 

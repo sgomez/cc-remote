@@ -1,15 +1,13 @@
 // Session server functions (#16): thin delivery glue over the core session use
 // cases, wired through the Docker engine, the SQLite AccountRepository, and the
-// GitHub credential issuer. The GitHub token for cloning/pushing is read
-// server-side from better-auth's stored OAuth account (never sent to the
-// client) and obtained through the GitHubTokenIssuer port rather than being
-// passed as a raw string — later sub-issues swap the OAuth adapter for one
-// that mints installation tokens. Every function is auth-guarded (defence in
+// GitHub App token issuer. Clone helpers receive a one-shot installation token;
+// the Session container obtains git credentials on demand from the broker (#33)
+// and carries no durable GitHub token. Every function is auth-guarded (defence in
 // depth over the route guard).
 
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { getGithubAccessToken, requireSession } from "~/adapters/auth";
+import { requireSession } from "~/adapters/auth";
 import { createGitHubAppTokenIssuer } from "~/adapters/github/github-app-token-issuer";
 import { uuidGenerator } from "~/adapters/system";
 import { loadDeploymentConfig } from "~/config/deployment";
@@ -35,23 +33,6 @@ import {
 
 async function guard(): Promise<void> {
   await requireSession(getRequest().headers);
-}
-
-/** Adapter: resolve a credential from the signed-in user's stored OAuth token. */
-function oauthTokenIssuer(): GitHubTokenIssuer {
-  return {
-    async issueToken(_repo: string) {
-      const token = await getGithubAccessToken(getRequest().headers);
-      if (!token) throw new Error("No GitHub access token for the current session.");
-      // OAuth tokens do not expire — use a far-future sentinel.
-      return { token, expiresAt: new Date("2099-01-01T00:00:00.000Z") };
-    },
-    // This issuer is for Session credentials only; installation listing uses
-    // the App JWT adapter in server/repositories.ts.
-    async listInstallations() {
-      return [];
-    },
-  };
 }
 
 /**
@@ -88,7 +69,6 @@ export const createSession = createServerFn({ method: "POST" })
       engine: containerEngine(),
       ids: uuidGenerator,
       cloneIssuer: cloneTokenIssuer(),
-      sessionIssuer: oauthTokenIssuer(),
       secretRegistry: brokerSecretRegistry(),
       brokerUrl: brokerUrl(),
     });
@@ -136,7 +116,6 @@ export const resetSession = createServerFn({ method: "POST" })
       engine: containerEngine(),
       ids: uuidGenerator,
       cloneIssuer: cloneTokenIssuer(),
-      sessionIssuer: oauthTokenIssuer(),
       secretRegistry: brokerSecretRegistry(),
       brokerUrl: brokerUrl(),
     });

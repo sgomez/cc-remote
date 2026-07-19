@@ -32,12 +32,10 @@ describe("buildSessionEnv", () => {
       repo: "o/r",
       sessionName: "s1",
       sessionUuid: "uuid-1",
-      githubToken: "ght",
       permissionMode: "auto",
       ...brokerEnv,
     });
     expect(env).toMatchObject({
-      GITHUB_TOKEN: "ght",
       GITHUB_REPO: "o/r",
       SESSION_NAME: "s1",
       SESSION_UUID: "uuid-1",
@@ -49,21 +47,33 @@ describe("buildSessionEnv", () => {
     });
   });
 
-  it("carries the broker secret and url alongside the durable github token", () => {
+  it("carries the broker secret and url without a durable github token", () => {
     const env = buildSessionEnv({
       type: requireProviderType("deepseek"),
       account: deepseek,
       repo: "o/r",
       sessionName: "s1",
       sessionUuid: "uuid-1",
-      githubToken: "ght",
       permissionMode: "auto",
       ...brokerEnv,
     });
     expect(env.CC_BROKER_SECRET).toBe("bs-1");
     expect(env.CC_BROKER_URL).toBe("http://web-manager:4001");
-    // The durable token is still present (removed in next ticket).
-    expect(env.GITHUB_TOKEN).toBe("ght");
+    // The durable token is gone -- git credentials are fetched on demand from the broker.
+    expect(env.GITHUB_TOKEN).toBeUndefined();
+  });
+
+  it("does not inject a durable GITHUB_TOKEN into any session", () => {
+    const env = buildSessionEnv({
+      type: requireProviderType("deepseek"),
+      account: deepseek,
+      repo: "o/r",
+      sessionName: "s1",
+      sessionUuid: "uuid-1",
+      permissionMode: "auto",
+      ...brokerEnv,
+    });
+    expect(Object.keys(env)).not.toContain("GITHUB_TOKEN");
   });
 
   it("omits anthropic env for remote-control (non api-key) types", () => {
@@ -74,12 +84,12 @@ describe("buildSessionEnv", () => {
       repo: "o/r",
       sessionName: "s1",
       sessionUuid: "uuid-1",
-      githubToken: "ght",
       permissionMode: "auto",
       ...brokerEnv,
     });
     expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
     expect(env.SESSION_UUID).toBe("uuid-1");
     expect(env.CC_BROKER_SECRET).toBe("bs-1");
+    expect(env.GITHUB_TOKEN).toBeUndefined();
   });
 });
