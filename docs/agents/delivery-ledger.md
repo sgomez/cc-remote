@@ -13,3 +13,8 @@
 2026-07-19 spec=#28 sub=#33 model=opus pr=#44 verdict=CLEAN cycles=0 wave=4 outcome=merged
 2026-07-19 spec=#28 sub=#36 model=haiku pr=#45 verdict=CLEAN cycles=0 wave=5 outcome=merged
 2026-07-19 spec=#28 sub=#37 model=sonnet pr=#46 verdict=CLEAN cycles=0 wave=6 outcome=merged
+2026-07-19 spec=#47 sub=#53 model=sonnet pr=#59 verdict=CLEAN cycles=0 wave=1 outcome=merged
+2026-07-19 spec=#47 sub=#54 model=opus pr=#60 verdict=CLEAN cycles=0 wave=2 outcome=merged
+2026-07-19 spec=#47 sub=#55 model=opus pr=#61 verdict=CLEAN cycles=0 wave=3 outcome=merged
+2026-07-19 spec=#47 sub=#57 model=sonnet pr=#62 verdict=CLEAN cycles=0 wave=4 outcome=merged
+2026-07-19 spec=#47 sub=#56 model=sonnet pr=#63 verdict=CLEAN cycles=2 wave=4 outcome=escalated
