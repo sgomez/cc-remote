@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildManifest,
   type BootstrapRecord,
   deriveBootstrapRecordFromManifest,
   generateClaimToken,
@@ -141,6 +142,54 @@ describe("deriveBootstrapRecordFromManifest", () => {
 
     const decoded = Buffer.from(record.githubAppPrivateKey, "base64").toString("utf8");
     expect(decoded).toBe(pem);
+  });
+});
+
+// ---- App Manifest Flow -----------------------------------------------------
+
+describe("buildManifest", () => {
+  it("builds a complete manifest from the base URL", () => {
+    const manifest = buildManifest("https://cc-remote.example.com");
+    expect(manifest).toEqual({
+      name: "cc-remote-cc-remote.example.com",
+      url: "https://cc-remote.example.com",
+      redirect_url: "https://cc-remote.example.com/bootstrap/manifest/callback",
+      callback_urls: ["https://cc-remote.example.com/api/auth/callback/github"],
+      public: true,
+      default_permissions: {
+        contents: "write",
+        pull_requests: "write",
+      },
+    });
+  });
+
+  it("produces a different name for a different hostname", () => {
+    const manifest = buildManifest("https://deploy-42.ngrok.io");
+    expect(manifest.name).toBe("cc-remote-deploy-42.ngrok.io");
+  });
+
+  it("handles a URL with trailing slash", () => {
+    const manifest = buildManifest("https://example.com/");
+    expect(manifest.url).toBe("https://example.com");
+    expect(manifest.redirect_url).toBe(
+      "https://example.com/bootstrap/manifest/callback",
+    );
+    expect(manifest.callback_urls).toEqual([
+      "https://example.com/api/auth/callback/github",
+    ]);
+  });
+
+  it("builds all required permissions", () => {
+    const manifest = buildManifest("https://test.app");
+    expect(manifest.default_permissions).toEqual({
+      contents: "write",
+      pull_requests: "write",
+    });
+  });
+
+  it("has correct redirect_url path", () => {
+    const manifest = buildManifest("https://cc-remote.example.com");
+    expect(manifest.redirect_url).toContain("/bootstrap/manifest/callback");
   });
 });
 
