@@ -223,7 +223,18 @@ const path = "/home/node/.claude.json";
 try {
   let config = {};
   if (fs.existsSync(path)) {
-    config = JSON.parse(fs.readFileSync(path, "utf8"));
+    try {
+      config = JSON.parse(fs.readFileSync(path, "utf8"));
+    } catch (parseErr) {
+      // A corrupt ~/.claude.json must NOT block the required keys below from
+      // being written: without hasCompletedOnboarding / hasTrustDialogAccepted /
+      // remoteControlAtStartup / permissions.defaultMode, Claude sits on a
+      // first-run modal in a headless container and Remote Control never comes
+      // up. Recover by starting fresh (same philosophy as config.js on a corrupt
+      // config.json). The prior file is overwritten by the writeFileSync below.
+      console.warn(" [Warning] ~/.claude.json was corrupt and could not be parsed; starting from a fresh config:", parseErr.message);
+      config = {};
+    }
   }
   if (!config.projects) config.projects = {};
   if (!config.projects["/workspace"]) config.projects["/workspace"] = {};
