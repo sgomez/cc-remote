@@ -45,6 +45,10 @@ export type {
   LogSink,
   SessionContainerSpec,
 } from "./ports/container-engine";
+export type {
+  GitHubTokenCredential,
+  GitHubTokenIssuer,
+} from "./ports/github-token-issuer";
 export type { IdGenerator } from "./ports/id-generator";
 
 // Use cases

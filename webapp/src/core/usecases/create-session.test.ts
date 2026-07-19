@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeAccountRepository } from "../../../test/fake-account-repository";
 import { FakeContainerEngine } from "../../../test/fake-container-engine";
+import { FakeGitHubTokenIssuer } from "../../../test/fake-github-token-issuer";
 import { FakeIdGenerator } from "../../../test/fake-id-generator";
 import type { Account } from "../domain/account";
 import { accountConfigVolumeName } from "../domain/account";
@@ -32,11 +33,12 @@ function setup(seed: Account[] = [account()]) {
   const accounts = new FakeAccountRepository(seed);
   const engine = new FakeContainerEngine();
   const ids = new FakeIdGenerator("uuid");
-  const create = makeCreateSession({ accounts, engine, ids });
-  return { accounts, engine, ids, create };
+  const issuer = new FakeGitHubTokenIssuer();
+  const create = makeCreateSession({ accounts, engine, ids, issuer });
+  return { accounts, engine, ids, issuer, create };
 }
 
-const input = { name: "s1", repo: "o/r", accountId: "acc-1", githubToken: "ght" };
+const input = { name: "s1", repo: "o/r", accountId: "acc-1" };
 
 describe("create-session", () => {
   let ctx: ReturnType<typeof setup>;
@@ -68,6 +70,8 @@ describe("create-session", () => {
   it("provisions the workspace volume and runs the main container two-phase", async () => {
     const session = await ctx.create(input);
     expect(session).toEqual({ name: "s1", repo: "o/r", accountId: "acc-1", status: "running" });
+
+    expect(ctx.issuer.issuedRepos).toEqual(["o/r"]);
 
     expect(ctx.engine.hasVolume(workspaceVolumeName("s1"))).toBe(true);
     // clone helper was removed after a clean exit
