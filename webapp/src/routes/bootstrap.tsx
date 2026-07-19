@@ -180,13 +180,7 @@ function BootstrapPage() {
 
 // ---- Choice screen -----------------------------------------------------------
 
-function ChoiceScreen({
-  onRegister,
-  onManual,
-}: {
-  onRegister: () => void;
-  onManual: () => void;
-}) {
+function ChoiceScreen({ onRegister, onManual }: { onRegister: () => void; onManual: () => void }) {
   return (
     <div className="login-wrap">
       <div className="panel login-card">
@@ -209,8 +203,8 @@ function ChoiceScreen({
         </div>
         <h1>cc-remote Setup</h1>
         <p className="subtle" style={{ margin: "8px auto 24px" }}>
-          Configure your deployment's GitHub identity. Your GitHub App needs
-          repository contents and pull requests write permissions.
+          Configure your deployment's GitHub identity. Your GitHub App needs repository contents and
+          pull requests write permissions.
         </p>
 
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -239,12 +233,7 @@ function ChoiceScreen({
             <div style={{ flex: 1, height: "1px", background: "var(--color-border, #333)" }} />
           </div>
 
-          <button
-            type="button"
-            className="btn"
-            style={{ width: "100%" }}
-            onClick={onManual}
-          >
+          <button type="button" className="btn" style={{ width: "100%" }} onClick={onManual}>
             I already have a GitHub App
           </button>
           <p className="card-meta" style={{ textAlign: "center", margin: "4px 0" }}>
@@ -506,7 +495,7 @@ function BootstrapForm({
 
           {isManifestFlow ? (
             <div className="field">
-              <label>Private key</label>
+              <span>Private key</span>
               <p className="card-meta" style={{ marginTop: 4 }}>
                 Uploaded via the App Manifest Flow. The private key is stored securely on the server
                 and was never transmitted to your browser.
@@ -524,11 +513,7 @@ function BootstrapForm({
                 style={{ display: "none" }}
               />
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <button type="button" className="btn" onClick={() => fileInputRef.current?.click()}>
                   {privateKeyFileName ? "Change file" : "Choose file"}
                 </button>
                 <span className="card-meta">{privateKeyFileName || "No file selected"}</span>

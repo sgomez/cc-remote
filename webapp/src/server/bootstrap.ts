@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createServerFn } from "@tanstack/react-start";
+import { loadDeploymentConfig } from "~/config/deployment";
 import {
   type BootstrapRecord,
   buildManifest,
@@ -15,7 +16,6 @@ import {
   validateBootstrapRecord,
   verifyClaimToken as verifyClaimTokenPure,
 } from "~/core/domain/bootstrap";
-import { loadDeploymentConfig } from "~/config/deployment";
 
 const BOOTSTRAP_FILE = "/data/bootstrap.json";
 const CLAIM_TOKEN_FILE = "/data/claim-token";
@@ -231,9 +231,7 @@ export const exchangeManifestCode = createServerFn({ method: "POST" })
       const body = await response.text().catch(() => "Unknown error");
       return {
         ok: false,
-        errors: [
-          `GitHub returned ${response.status} while exchanging the manifest code: ${body}`,
-        ],
+        errors: [`GitHub returned ${response.status} while exchanging the manifest code: ${body}`],
       } as const;
     }
 

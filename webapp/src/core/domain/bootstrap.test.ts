@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildManifest,
   type BootstrapRecord,
+  buildManifest,
   deriveBootstrapRecordFromManifest,
   generateClaimToken,
   type ManifestConversionResponse,
@@ -171,12 +171,8 @@ describe("buildManifest", () => {
   it("handles a URL with trailing slash", () => {
     const manifest = buildManifest("https://example.com/");
     expect(manifest.url).toBe("https://example.com");
-    expect(manifest.redirect_url).toBe(
-      "https://example.com/bootstrap/manifest/callback",
-    );
-    expect(manifest.callback_urls).toEqual([
-      "https://example.com/api/auth/callback/github",
-    ]);
+    expect(manifest.redirect_url).toBe("https://example.com/bootstrap/manifest/callback");
+    expect(manifest.callback_urls).toEqual(["https://example.com/api/auth/callback/github"]);
   });
 
   it("builds all required permissions", () => {
