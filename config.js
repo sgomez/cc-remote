@@ -288,7 +288,7 @@ async function main() {
   // Multi-line private key: ask for a file path first, fall back to paste.
   let privateKey = config.github?.privateKey || '';
   if (!privateKey) {
-    const keyPathInput = await question(`Enter path to your GitHub App private key PEM file [${config.github?.privateKeyPath || ''}]: `);
+    const keyPathInput = await question(`Enter path to your GitHub App private key PEM file: `);
     const keyPath = keyPathInput.trim();
     if (keyPath) {
       privateKey = fs.readFileSync(keyPath, 'utf8').trim();

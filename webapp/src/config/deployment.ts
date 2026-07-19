@@ -153,15 +153,14 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
   }
   const githubAppPrivateKey = require("GITHUB_APP_PRIVATE_KEY");
   if (githubAppPrivateKey) {
-    try {
-      const decoded = Buffer.from(githubAppPrivateKey, "base64").toString("utf8");
-      if (!/^-----BEGIN\s/.test(decoded)) {
-        errors.push(
-          "GITHUB_APP_PRIVATE_KEY must be a base64-encoded PEM (decoded value does not look like a private key)",
-        );
-      }
-    } catch {
-      errors.push("GITHUB_APP_PRIVATE_KEY must be a valid base64-encoded PEM private key");
+    // Buffer.from(data, "base64") never throws on invalid input in Node.js — it
+    // silently ignores non-base64 characters. The PEM-header regex on the decoded
+    // string is the real guard. No try/catch needed here.
+    const decoded = Buffer.from(githubAppPrivateKey, "base64").toString("utf8");
+    if (!/^-----BEGIN\s/.test(decoded)) {
+      errors.push(
+        "GITHUB_APP_PRIVATE_KEY must be a base64-encoded PEM (decoded value does not look like a private key)",
+      );
     }
   }
   const githubAppSlug = require("GITHUB_APP_SLUG");
