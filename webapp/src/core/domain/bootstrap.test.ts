@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  deriveBootstrapRecordFromManifest,
-  validateBootstrapRecord,
   type BootstrapRecord,
+  deriveBootstrapRecordFromManifest,
+  generateClaimToken,
   type ManifestConversionResponse,
+  validateBootstrapRecord,
+  verifyClaimToken,
 } from "./bootstrap";
 
 const VALID_RECORD: BootstrapRecord = {
@@ -119,9 +121,7 @@ describe("deriveBootstrapRecordFromManifest", () => {
     expect(record.githubClientSecret).toBe("secret-value");
     // Private key should be base64-encoded
     expect(record.githubAppPrivateKey).toBeTruthy();
-    expect(() =>
-      Buffer.from(record.githubAppPrivateKey, "base64").toString("utf8"),
-    ).not.toThrow();
+    expect(() => Buffer.from(record.githubAppPrivateKey, "base64").toString("utf8")).not.toThrow();
     // Allow-list seeded from owner login
     expect(record.allowedGithubUsers).toEqual(["sgomez"]);
   });
@@ -141,5 +141,67 @@ describe("deriveBootstrapRecordFromManifest", () => {
 
     const decoded = Buffer.from(record.githubAppPrivateKey, "base64").toString("utf8");
     expect(decoded).toBe(pem);
+  });
+});
+
+// ---- Claim Token -----------------------------------------------------------
+
+describe("generateClaimToken", () => {
+  it("produces a 64-character hex string", () => {
+    const token = generateClaimToken();
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("produces different tokens across calls", () => {
+    const a = generateClaimToken();
+    const b = generateClaimToken();
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("verifyClaimToken", () => {
+  it("returns true for matching tokens", () => {
+    const token = generateClaimToken();
+    expect(verifyClaimToken(token, token)).toBe(true);
+  });
+
+  it("returns false when the supplied token differs by one character", () => {
+    const stored = generateClaimToken();
+    const wrong = (stored[0] === "f" ? "0" : "f") + stored.slice(1);
+    expect(verifyClaimToken(stored, wrong)).toBe(false);
+  });
+
+  it("returns false when the supplied token is completely different", () => {
+    const stored = generateClaimToken();
+    const wrong = generateClaimToken();
+    expect(verifyClaimToken(stored, wrong)).toBe(false);
+  });
+
+  it("returns false when the stored token is undefined (token does not exist)", () => {
+    expect(verifyClaimToken(undefined, "some-token")).toBe(false);
+  });
+
+  it("returns false when the supplied token is empty", () => {
+    expect(verifyClaimToken("stored-token", "")).toBe(false);
+  });
+
+  it("returns false when the stored token is empty", () => {
+    expect(verifyClaimToken("", "supplied-token")).toBe(false);
+  });
+
+  it("returns false for a shorter supplied token without leaking length", () => {
+    const stored = generateClaimToken();
+    expect(verifyClaimToken(stored, stored.slice(0, 32))).toBe(false);
+  });
+
+  it("returns false for a longer supplied token without leaking length", () => {
+    const stored = generateClaimToken();
+    expect(verifyClaimToken(stored, `${stored}extra`)).toBe(false);
+  });
+
+  it("does not throw for any input", () => {
+    expect(() => verifyClaimToken(undefined as unknown as string, "")).not.toThrow();
+    expect(() => verifyClaimToken("abc", "xyz")).not.toThrow();
+    expect(() => verifyClaimToken("", "")).not.toThrow();
   });
 });
