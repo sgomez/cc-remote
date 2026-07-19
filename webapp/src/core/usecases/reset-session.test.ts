@@ -25,9 +25,10 @@ function setup() {
   const accounts = new FakeAccountRepository([account()]);
   const engine = new FakeContainerEngine();
   const ids = new FakeIdGenerator("uuid");
-  const issuer = new FakeGitHubTokenIssuer();
-  const reset = makeResetSession({ accounts, engine, ids, issuer });
-  return { accounts, engine, ids, issuer, reset };
+  const cloneIssuer = new FakeGitHubTokenIssuer();
+  const sessionIssuer = new FakeGitHubTokenIssuer();
+  const reset = makeResetSession({ accounts, engine, ids, cloneIssuer, sessionIssuer });
+  return { accounts, engine, ids, cloneIssuer, sessionIssuer, reset };
 }
 
 describe("reset-session", () => {
@@ -52,7 +53,8 @@ describe("reset-session", () => {
     const session = await ctx.reset({ name: "s" });
 
     expect(session).toEqual({ name: "s", repo: "o/r", accountId: "acc-1", status: "running" });
-    expect(ctx.issuer.issuedRepos).toEqual(["o/r"]);
+    expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
+    expect(ctx.sessionIssuer.issuedRepos).toEqual(["o/r"]);
     expect(ctx.engine.hasVolume(workspaceVolumeName("s"))).toBe(true);
     const spec = ctx.engine.runSessionSpecs.at(-1);
     expect(spec?.env.SESSION_UUID).toBe("uuid-1");

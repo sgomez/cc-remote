@@ -90,6 +90,17 @@ export class SessionNotFoundError extends DomainError {
   }
 }
 
+export class RepositoryNotGrantedError extends DomainError {
+  readonly repo: string;
+  constructor(repo: string) {
+    super(
+      "repository_not_granted",
+      `Repository "${repo}" is not covered by any GitHub App installation. Add it from the Repositories screen.`,
+    );
+    this.repo = repo;
+  }
+}
+
 export class CloneFailedError extends DomainError {
   readonly exitCode: number;
   constructor(name: string, exitCode: number) {

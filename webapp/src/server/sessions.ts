@@ -10,7 +10,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { getGithubAccessToken, requireSession } from "~/adapters/auth";
+import { createGitHubAppTokenIssuer } from "~/adapters/github/github-app-token-issuer";
 import { uuidGenerator } from "~/adapters/system";
+import { loadDeploymentConfig } from "~/config/deployment";
 import {
   makeCreateSession,
   makeDestroySession,
@@ -30,7 +32,7 @@ async function guard(): Promise<void> {
 }
 
 /** Adapter: resolve a credential from the signed-in user's stored OAuth token. */
-function githubTokenIssuer(): GitHubTokenIssuer {
+function oauthTokenIssuer(): GitHubTokenIssuer {
   return {
     async issueToken(_repo: string) {
       const token = await getGithubAccessToken(getRequest().headers);
@@ -39,6 +41,23 @@ function githubTokenIssuer(): GitHubTokenIssuer {
       return { token, expiresAt: new Date("2099-01-01T00:00:00.000Z") };
     },
   };
+}
+
+/**
+ * GitHub App token issuer for the clone helper. Minted lazily so a misconfigured
+ * deployment fails at the first session create rather than at process start, which
+ * would crash the server. The adapter is stateless; the same instance is reused.
+ */
+let _cloneIssuer: GitHubTokenIssuer | undefined;
+function cloneTokenIssuer(): GitHubTokenIssuer {
+  if (!_cloneIssuer) {
+    const config = loadDeploymentConfig();
+    _cloneIssuer = createGitHubAppTokenIssuer({
+      appId: config.githubAppId,
+      privateKey: config.githubAppPrivateKey,
+    });
+  }
+  return _cloneIssuer;
 }
 
 export const listSessions = createServerFn({ method: "GET" }).handler(
@@ -57,7 +76,8 @@ export const createSession = createServerFn({ method: "POST" })
       accounts: await accountRepository(),
       engine: containerEngine(),
       ids: uuidGenerator,
-      issuer: githubTokenIssuer(),
+      cloneIssuer: cloneTokenIssuer(),
+      sessionIssuer: oauthTokenIssuer(),
     });
     const session = await create({
       name: data.name,
@@ -102,7 +122,8 @@ export const resetSession = createServerFn({ method: "POST" })
       accounts: await accountRepository(),
       engine: containerEngine(),
       ids: uuidGenerator,
-      issuer: githubTokenIssuer(),
+      cloneIssuer: cloneTokenIssuer(),
+      sessionIssuer: oauthTokenIssuer(),
     });
     await reset({
       name: data.name,
