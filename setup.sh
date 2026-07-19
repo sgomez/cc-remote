@@ -30,8 +30,26 @@ elif command -v sysctl >/dev/null 2>&1; then
 fi
 HOST_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
 
+# Own the wizard's output files as the host user — but ONLY on rootful Docker.
+#
+# The wizard writes config.json/.env into the bind-mounted repo. On standard
+# (rootful) Docker the container's root maps to host root, so those files land
+# as root:root 0600 and the host user can't read them — docker compose then
+# fails to interpolate .env. Passing --user "$HOST_UID:$HOST_GID" makes the
+# container write them as the host user.
+#
+# On ROOTLESS Docker the mapping is the opposite and this flag would BREAK it:
+# container root already maps to the host user, while a non-zero uid maps into
+# the subuid range, producing files owned by an unusable (high) uid the host
+# user can't touch. So detect rootless and skip --user there.
+USER_FLAG=()
+if ! docker info -f '{{.SecurityOptions}}' 2>/dev/null | grep -q 'name=rootless'; then
+  USER_FLAG=(--user "$(id -u):$(id -g)")
+fi
+
 # Run the config script inside a lightweight Node container
 docker run --rm -it \
+  "${USER_FLAG[@]}" \
   -v "$(pwd)":/app \
   -w /app \
   -e HOST_UID="$(id -u)" \
