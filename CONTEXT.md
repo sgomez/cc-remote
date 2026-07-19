@@ -5,7 +5,22 @@ This document defines the core domain concepts and terminology for the `cc-remot
 ## Concepts
 
 ### Setup & Configuration Module
-The module responsible for gathering environment variables, validating paths, and building the environment. Consolidates both host-side preparations and container-side environments through a single schema-validated interface (`config.json` and compiled `.env`).
+The host-side half of configuration: the wizard that gathers the facts only the host can supply and compiles them into the environment the stack starts with (`config.json` and compiled `.env`). It owns infrastructure and host-derived values — public domain, reverse proxy toggle and ports, host UID/GID, git identity, the auth signing secret, and the agent resource caps — and nothing else. Everything about the deployment's GitHub identity belongs to Deployment Bootstrap instead.
+
+### Deployment Bootstrap
+The act of giving a running but not-yet-usable deployment its GitHub identity, performed from the browser rather than the console. It exists because registering a GitHub App from a manifest requires a browser, and on a headless VPS the browser is the only client with a natural route to the deployment. It either registers a brand-new GitHub App via the App Manifest Flow or accepts the details of an existing one, and ends by recording them in the Bootstrap File.
+
+### Unconfigured Deployment
+A deployment that is running and reachable but has no GitHub identity yet, so nobody can sign in and no Session can clone. It is a legal, expected state rather than a misconfiguration: the startup preflight admits it and serves only the bootstrap screen. A deployment leaves this state exactly once per GitHub identity, and re-enters it only when an operator deliberately reopens bootstrap.
+
+### Claim Token
+The single-use secret that authorises Deployment Bootstrap. It is issued by the container entrypoint only while the deployment is unconfigured and surfaced where only someone with host access can read it. It exists because the bootstrap screen necessarily sits outside the sign-in it is configuring, so possession of the token stands in for the identity that does not exist yet. It is spent on the first successful sign-in, not on App registration, so a failed sign-in leaves bootstrap retryable.
+
+### App Manifest Flow
+GitHub's browser round-trip that registers a GitHub App from a declarative manifest and hands back the App's identifiers, client credentials and private key in a single response. It replaces manual App creation followed by copying values into a console prompt: permissions and the OAuth callback URL are declared in the manifest, and the private key never has to be transcribed. The whole round-trip must complete within one hour.
+
+### Bootstrap File
+The record of the deployment's GitHub identity — App ID, slug, OAuth client credentials, private key, and the sign-in allow-list — written to the same persisted volume as the database. It is the sole source of these values: they are deliberately absent from the compiled `.env` and from the compose environment, so there is no precedence question between two sources. It is validated before it is written, because a deployment that persists an unloadable identity cannot start to fix itself.
 
 ### User Identity Adapter
 A dynamic adapter at the entrypoint seam. It detects the host user's UID and GID at runtime and configures the container's running user to match. This ensures all generated filesystem changes inside `/workspace` are owned by the host user, avoiding root-permission leakage.
