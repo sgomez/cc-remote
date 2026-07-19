@@ -62,13 +62,12 @@ services:
       - "127.0.0.1:${WEB_PORT:-4000}:4000"
     environment:
       - PORT=4000
-      # Auth (better-auth): base URL, stable signing secret, GitHub OAuth app,
-      # fail-closed allow-list.
+      # Auth: base URL and stable signing secret. GitHub identity (OAuth client
+      # credentials, App ID, private key, allow-list) is configured through the
+      # browser bootstrap screen (Phase 2) and stored in the Bootstrap File on the
+      # persisted data volume, not in compose env vars.
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-      - ALLOWED_GITHUB_USERS=${ALLOWED_GITHUB_USERS}
       # Docker adapter: reach the daemon via the proxy over the CONTROL net;
       # created sibling agent containers join the AGENTS net, which web-manager is
       # also on, so the WS proxy can dial their ttyd by name (<name>:7681).
@@ -86,13 +85,6 @@ services:
       - AGENT_MEMORY_LIMIT=${AGENT_MEMORY_LIMIT:-2g}
       - AGENT_CPU_LIMIT=${AGENT_CPU_LIMIT:-2}
       - AGENT_PIDS_LIMIT=${AGENT_PIDS_LIMIT:-4096}
-      # GitHub App identifiers for token-minting. GITHUB_APP_PRIVATE_KEY is
-      # base64-encoded (config.js encodes a multi-line PEM so it survives as a
-      # single .env line). Missing or malformed values trigger validate:env to
-      # fail at container start rather than at first clone.
-      - GITHUB_APP_ID=${GITHUB_APP_ID}
-      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY}
-      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
       - PERMISSION_MODE=${PERMISSION_MODE:-auto}
       - GIT_USER_NAME=${GIT_USER_NAME}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL}

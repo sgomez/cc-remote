@@ -9,32 +9,15 @@ Every step from an empty VPS to your first running Session. No prior knowledge a
 - A **GitHub account**. You'll use it both to sign in to the manager and to clone repos into Sessions.
 - **Nothing else.** No Node, no Claude Code CLI, no `~/.claude` on the host: Claude authentication happens later, in the browser.
 
-## Step 1: Create a GitHub App
+## Two-phase bootstrap
 
-The manager signs you in and clones repositories through a **GitHub App** registered under your GitHub account. A single GitHub App handles both authentication and repository access — unlike the previous OAuth App, permissions come from the App's own configuration rather than from the OAuth scope, and credentials minted for Sessions are short-lived installation tokens scoped to single repositories.
+Installation happens in two phases.
 
-1. Go to <https://github.com/settings/apps/new> and fill in the form:
-   - **GitHub App name**: anything, e.g. `cc-remote`.
-   - **Homepage URL**: `https://<your-domain>` (or `http://localhost:4000` for a local test).
-   - **Callback URL**: `https://<your-domain>/api/auth/callback/github` (or `http://localhost:4000/api/auth/callback/github` for a local test).
-   - **Post installation**: leave **Redirect on update** unchecked.
-   - **Webhook**: uncheck **Active** — this deployment does not use webhooks.
-2. Under **Repository permissions**, set:
-   - **Contents** → **Read and write**
-   - **Pull requests** → **Read and write**
-   - **Metadata** → **Read-only** (required by GitHub)
-   - Leave all other permissions at **Read-only** or **No access**.
-3. Under **Where can this GitHub App be installed?**, choose **Any account** (you install it on your own repositories later from the web manager's Repositories screen).
-4. Click **Create GitHub App**. After creation, you see the App's settings page.
-5. Copy these values — the setup wizard asks for them in Step 3:
-   - **Client ID** (near the top of the page, above "App ID")
-   - **App ID** (the numeric ID at the top of the page)
-   - **Client secret**: click **Generate a new client secret** and copy it (shown only once)
-   - **Private key**: scroll to the bottom, click **Generate a private key**, download the `.pem` file, and keep it safe — you will paste its contents into the wizard
-   - **App slug**: the part of the GitHub URL path after `/apps/` (e.g. `cc-remote` if your app is at `github.com/apps/cc-remote`)
-6. Don't install the App yet — you do that from the web manager's **Repositories** screen after the stack is running.
+**Phase 1** runs in the terminal (the setup wizard). You answer only what the host alone can answer: your domain, whether you want the built-in Caddy reverse proxy, and which ports to use. The wizard derives everything else (auth signing secret, container user IDs, git identity, agent resource limits) automatically. No GitHub App creation, no private key handling, no allow-list.
 
-## Step 2: Get the code
+**Phase 2** happens in the browser, after the stack is running. You open your deployment's URL and complete the bootstrap through a web screen: either register a new GitHub App with a single click via GitHub's App Manifest Flow, or manually enter an existing App's details. The private key is uploaded as a file or handled entirely by GitHub -- never pasted into a terminal prompt.
+
+## Step 1: Get the code
 
 Clone the latest tagged release (not `main`, which may be unstable):
 
@@ -51,35 +34,27 @@ unzip cc-remote.zip
 cd cc-remote-1.0.0-alpha.1
 ```
 
-## Step 3: Run the setup wizard
+## Step 2: Run the setup wizard (Phase 1)
 
 ```bash
 ./setup.sh
 ```
 
-The wizard runs inside a temporary Docker container (that's why no Node is needed on the host), asks a handful of questions, and writes two gitignored files: `config.json` (your answers) and `.env` (compiled from it).
+The wizard runs inside a temporary Docker container (that's why no Node is needed on the host), asks about infrastructure only, and writes two gitignored files: `config.json` (your answers) and `.env` (compiled from it).
 
-It asks about **infrastructure only**:
+The Phase 1 wizard asks about **infrastructure only**:
 
 | Question | What to answer |
 |---|---|
 | Enable **Caddy**? | Yes for a real deployment with HTTPS; no if you bring your own reverse proxy or are testing locally. |
 | **Domain name** | e.g. `cc.example.com`, or `localhost:4000` for a local test. |
 | Caddy **HTTP/HTTPS ports** | The defaults (80/443) are fine; enter `0` for HTTP to disable it. |
-| GitHub App **Client ID** | From Step 1. |
-| GitHub App **Client Secret** | From Step 1. |
-| GitHub App **App ID** (numeric) | From Step 1. |
-| GitHub App **Private Key** | Paste the full contents of the downloaded `.pem` file. The wizard supports multi-line pasting (paste the whole file). |
-| GitHub App **Slug** | From Step 1 — used to build the installation URL. |
-| **Allowed GitHub users** | Comma-separated GitHub usernames allowed to sign in, e.g. `sgomez`. **Leave it empty and nobody can sign in**: the allow-list fails closed. |
 
 Everything else (auth secret, container user IDs, git identity, permission mode, per-agent resource limits) is derived automatically, with no prompt. You can change those later in `config.json` (see the [user guide](usage.md#configuration)); never edit `.env` by hand, it's regenerated on every `./setup.sh` run.
 
-The wizard asks **nothing** about repositories, sessions or Claude accounts: those live in the web UI, not in deployment config.
+The wizard asks **nothing** about GitHub Apps, OAuth credentials, private keys, allow-lists, repositories, sessions or Claude accounts. Those are configured in Phase 2, from the browser.
 
-## Step 4: Start the stack
-
-The wizard offers to start everything at the end. If you declined, or want to do it later:
+## Step 3: Start the stack
 
 ```bash
 docker compose up -d --build
@@ -91,13 +66,76 @@ This builds two images (the web manager and the agent image Sessions run on) and
 docker compose logs -f
 ```
 
-The manager validates its environment on start and **fails fast with a list of every problem** if something is misconfigured; if it's up and quiet, it's healthy.
+The manager validates its environment on start and reports every problem. On a fresh Phase 1 deployment the manager has no GitHub identity configured yet, so it serves the bootstrap screen only -- that is expected behaviour. 
 
-## Step 5: Sign in and create your first Session
+### Finding the Claim Token
 
-Everything from here happens **in the browser**:
+The container entrypoint generates a **Claim Token** when the deployment has no GitHub identity configured. Find it in the start logs:
 
-1. Open `https://<your-domain>` (or `http://localhost:4000`) and click **Sign In with GitHub**. Only usernames on the allow-list get in.
+```bash
+docker compose logs web-manager | grep "Claim Token"
+```
+
+You will see output like:
+
+```
+Claim Token: ABC123def456
+```
+
+The token is also written to a file on the data volume at `/data/claim-token` with `0600` permissions. You need this token to access the bootstrap screen -- possession of the token proves you are the deployment's owner.
+
+## Step 4: Bootstrap from the browser (Phase 2)
+
+Once the stack is running and you have the Claim Token, open your deployment's URL in a browser:
+
+```
+https://<your-domain>
+```
+
+The deployment is unconfigured, so every page redirects to the **bootstrap screen**. Enter your Claim Token to proceed.
+
+### Option A: Register a new GitHub App (recommended)
+
+Click the button to register a new GitHub App through GitHub's **App Manifest Flow**. GitHub creates the App from a declarative manifest with the correct permissions and callback URL already filled in. After approval, GitHub redirects back to your deployment with the App's credentials -- no values are copied or pasted.
+
+The manifest declares:
+- Homepage URL: your deployment's URL
+- OAuth callback URL: `/api/auth/callback/github`
+- Repository permissions: **Contents: write**, **Pull requests: write**
+
+After GitHub returns the App credentials, you see a pre-filled form with:
+- The App's owner (your GitHub login or organisation name)
+- The allow-list pre-seeded with that owner's login
+
+Edit the allow-list if needed (an App registered under an organisation seeds the organisation name, not your personal login). Save the configuration. The deployment validates the values and applies them by restarting itself. When it comes back, you will be signed in automatically.
+
+### Option B: Enter an existing GitHub App manually
+
+If you already have a GitHub App (or want to use the same App across deployments), choose the manual path and enter:
+
+- **Client ID** and **Client Secret** (from the App's "Identification" section)
+- **App ID** (the numeric ID at the top of the App's settings page)
+- **App Slug** (the part of the GitHub URL path after `/apps/`, e.g. `cc-remote`)
+- **Private key** (upload the `.pem` file from the App's "Private keys" section -- no pasting)
+- **Allowed GitHub usernames** (comma-separated, fail-closed: an empty list denies everyone)
+
+### What happens next
+
+After saving, the deployment:
+1. Validates the configuration in memory
+2. Writes the Bootstrap File to the data volume
+3. Exits cleanly -- the `restart: unless-stopped` policy brings it back with the new configuration
+4. The bootstrap screen polls for the restart and redirects you to the sign-in page
+
+Sign in with GitHub, and you are taken to the **Repositories screen** to install the App on your repositories. From there, [create your first Session](usage.md#creating-a-session).
+
+> **The Claim Token stops working after your first successful sign-in.** If sign-in fails for any reason, the token remains valid and you can retry.
+
+## Step 5: Install the App and create your first Session
+
+After signing in:
+
+1. Go to **Repositories** and click the button to install the App on your GitHub account. Select the repositories you want Sessions to access.
 2. Go to **Accounts** and register one, which is what Sessions authenticate Claude with:
    - **`claude` (OAuth)**: the manager opens a terminal in your browser running the normal interactive `claude` login. Complete it once; the credentials are stored in that Account's own Docker volume and the temporary login container is thrown away.
    - **API key**: DeepSeek, or **Custom** for any Anthropic-compatible endpoint (API key, base URL, model).
@@ -106,26 +144,32 @@ Everything from here happens **in the browser**:
 
 That's it. Day-to-day operation is covered in the [user guide](usage.md).
 
-## Migrating from the OAuth App
+## Reopening bootstrap
 
-If you are upgrading an existing deployment that was set up with the previous OAuth App, follow these steps:
+To change the GitHub App, update the allow-list, or rotate credentials, run the following command on the host to reopen bootstrap and issue a fresh Claim Token:
 
-1. **Create a GitHub App** following [Step 1](#step-1-create-a-github-app) above — use the same name and callback URL as your existing OAuth App for a clean transition.
-2. **Update your configuration**: run `./setup.sh` again. The wizard detects existing `config.json` and offers its values as defaults; update them to point at the new GitHub App values (Client ID, Client Secret, App ID, Private Key, App Slug).
-3. **Rebuild and restart**:
+```bash
+docker compose exec web-manager sh -c 'rm -f /data/bootstrap.json /data/claim-token && kill 1'
+```
+
+Wait for the container to restart (`restart: unless-stopped`), then fetch the new token:
+
+```bash
+docker compose logs web-manager | grep "Claim Token"
+```
+
+Open your deployment's URL and complete Phase 2 again. Running Sessions survive the restart.
+
+## Migrating from the single-phase setup
+
+If you are upgrading an existing deployment that was set up with the single-phase wizard (the old `config.js` that asked for the GitHub App ID, private key, OAuth credentials and allow-list through the terminal):
+
+1. **Run `./setup.sh` again.** The wizard detects existing `config.json` and offers its values as defaults. Answer the infrastructure-only questions (Caddy, domain, ports) -- the old GitHub identity values in `config.json` are ignored and the wizard no longer prompts for them.
+2. **Rebuild and restart**:
    ```bash
    docker compose up -d --build
    ```
-4. **Re-sign in**: the GitHub App uses different credentials from the OAuth App, so every user signs in once more. The allow-list and existing Accounts are untouched.
-5. **Install the App on your repositories**: go to the web manager's **Repositories** screen and click the button to open GitHub's installation flow. Select the repositories you want Sessions to access.
-6. **Pre-existing Sessions** created before the migration keep their old static `GITHUB_TOKEN` until they are **reset**. New Sessions created after the migration use the new installation token model automatically. To migrate an existing Session, reset it from the web UI — this recreates its container and workspace with the new credential model.
+3. **Complete Phase 2 from the browser.** Open your deployment's URL, enter the Claim Token (from `docker compose logs web-manager | grep "Claim Token"`), and use the **manual path** to enter your existing GitHub App's details. This is the migration route: the old `config.json` and `.env` no longer carry these values, and the Bootstrap File on the data volume becomes the single source of truth.
+4. The private key and OAuth client secret now live on the data volume (alongside the signed-in users' GitHub access tokens that better-auth already stores there) rather than in a plaintext `.env` file on the host. **Existing Sessions keep working** through the restart; no Session needs to be reset.
 
-### Rollback
-
-If the GitHub App misbehaves in production, you can revert to the OAuth App:
-
-1. Run `./setup.sh` again and enter your old GitHub OAuth App Client ID and Client Secret (or keep them saved from the original setup).
-2. Rebuild and restart the stack: `docker compose up -d --build`.
-3. Users sign in once more (the rollback is another credential change).
-4. Sessions created under the GitHub App keep their broker credential path until they are **reset** — roll them back individually from the web UI if needed.
-5. The GitHub App's private key is no longer loaded; the Repositories screen shows no installations. Session creation works as before using the OAuth token.
+After migration, run `./setup.sh` again only to change infrastructure settings (domain, ports, Caddy toggle, resource caps). GitHub identity changes go through the browser bootstrap screen using `docker compose exec ...` to reopen it.
