@@ -9,6 +9,7 @@ import {
   RepositoryNotGrantedError,
   SessionExistsError,
 } from "../domain/errors";
+import { DEFAULT_PERMISSION_MODE, resolvePermissionMode } from "../domain/permission-mode";
 import { requireProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
 import { assertValidRepo, assertValidSessionName } from "../domain/session";
@@ -69,7 +70,7 @@ export function makeCreateSession(deps: CreateSessionDeps) {
       name: input.name,
       repo: input.repo,
       sessionUuid: deps.ids.newId(),
-      permissionMode: input.permissionMode ?? "auto",
+      permissionMode: resolvePermissionMode(input.permissionMode, DEFAULT_PERMISSION_MODE),
       brokerUrl: deps.brokerUrl,
       commitIdentity: input.commitIdentity,
     });

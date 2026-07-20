@@ -3,6 +3,7 @@
 // persists Sessions; it only computes their names, labels, and derived status.
 
 import { InvalidRepoError, InvalidSessionNameError } from "./errors";
+import type { PermissionMode } from "./permission-mode";
 
 /**
  * Docker's container lifecycle, as a closed domain vocabulary. The adapter maps
@@ -41,6 +42,8 @@ export type Session = {
   repo: string;
   accountId: string;
   status: SessionStatus;
+  /** `null` for a Session created before the mode was recorded on its label. */
+  permissionMode: PermissionMode | null;
 };
 
 /**
@@ -56,6 +59,12 @@ export type SessionContainer = {
   state: ContainerState;
   exitCode?: number | null;
   cloning: boolean;
+  /**
+   * The mode the Session was created in, recovered from its label. `null` for a
+   * Session created before the label existed — a reset resolves those to the
+   * deployment default rather than inventing one.
+   */
+  permissionMode: PermissionMode | null;
 };
 
 // Equivalent to legacy NAME_REGEX / REPO_REGEX (from the legacy web-manager on
@@ -70,6 +79,7 @@ export const SESSION_LABELS = {
   repo: "cc-remote-repo",
   accountId: "cc-remote-account-id",
   cloning: "cc-remote-cloning",
+  permissionMode: "cc-remote-permission-mode",
 } as const;
 
 export function isValidSessionName(name: string): boolean {
@@ -92,24 +102,24 @@ export function workspaceVolumeName(name: string): string {
   return `cc-remote-workspace-${name}`;
 }
 
-export function buildSessionLabels(input: {
+export type SessionLabelInput = {
   name: string;
   repo: string;
   accountId: string;
-}): Record<string, string> {
+  permissionMode: PermissionMode;
+};
+
+export function buildSessionLabels(input: SessionLabelInput): Record<string, string> {
   return {
     [SESSION_LABELS.marker]: "true",
     [SESSION_LABELS.name]: input.name,
     [SESSION_LABELS.repo]: input.repo,
     [SESSION_LABELS.accountId]: input.accountId,
+    [SESSION_LABELS.permissionMode]: input.permissionMode,
   };
 }
 
-export function buildCloneLabels(input: {
-  name: string;
-  repo: string;
-  accountId: string;
-}): Record<string, string> {
+export function buildCloneLabels(input: SessionLabelInput): Record<string, string> {
   return {
     ...buildSessionLabels(input),
     [SESSION_LABELS.cloning]: "true",

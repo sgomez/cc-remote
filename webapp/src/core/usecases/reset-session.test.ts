@@ -6,7 +6,8 @@ import { FakeGitHubTokenIssuer } from "../../../test/fake-github-token-issuer";
 import { FakeIdGenerator } from "../../../test/fake-id-generator";
 import type { Account } from "../domain/account";
 import { AccountNotFoundError, SessionNotFoundError } from "../domain/errors";
-import { workspaceVolumeName } from "../domain/session";
+import { DEFAULT_PERMISSION_MODE } from "../domain/permission-mode";
+import { SESSION_LABELS, workspaceVolumeName } from "../domain/session";
 import { makeResetSession } from "./reset-session";
 
 const commitIdentity = {
@@ -61,13 +62,62 @@ describe("reset-session", () => {
     await expect(ctx.reset({ name: "s", commitIdentity })).rejects.toThrow(AccountNotFoundError);
   });
 
+  // A reset must restore the Session the operator had, not silently change its
+  // security posture to whatever the deployment default happens to be now.
+  it("recovers the permission mode from the label rather than readopting the default", async () => {
+    ctx.engine.seedRunningSession({
+      name: "s",
+      repo: "o/r",
+      accountId: "acc-1",
+      permissionMode: "bypassPermissions",
+    });
+    await ctx.engine.createVolume(workspaceVolumeName("s"));
+
+    const session = await ctx.reset({ name: "s", commitIdentity, permissionMode: "auto" });
+
+    expect(session.permissionMode).toBe("bypassPermissions");
+    const spec = ctx.engine.runSessionSpecs.at(-1);
+    expect(spec?.env.PERMISSION_MODE).toBe("bypassPermissions");
+    expect(spec?.labels[SESSION_LABELS.permissionMode]).toBe("bypassPermissions");
+  });
+
+  // A Session created before the label existed: upgrading must not strand it.
+  it("falls back to the caller's deployment default when the label is absent", async () => {
+    ctx.engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "acc-1" });
+    await ctx.engine.createVolume(workspaceVolumeName("s"));
+
+    const session = await ctx.reset({
+      name: "s",
+      commitIdentity,
+      permissionMode: "bypassPermissions",
+    });
+
+    expect(session.permissionMode).toBe("bypassPermissions");
+    expect(ctx.engine.runSessionSpecs.at(-1)?.env.PERMISSION_MODE).toBe("bypassPermissions");
+  });
+
+  it("falls back to the domain default when neither the label nor the caller names one", async () => {
+    ctx.engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "acc-1" });
+    await ctx.engine.createVolume(workspaceVolumeName("s"));
+
+    const session = await ctx.reset({ name: "s", commitIdentity });
+
+    expect(session.permissionMode).toBe(DEFAULT_PERMISSION_MODE);
+  });
+
   it("recreates the session with a fresh SESSION_UUID from the labelled repo/account", async () => {
     ctx.engine.seedRunningSession({ name: "s", repo: "o/r", accountId: "acc-1" });
     await ctx.engine.createVolume(workspaceVolumeName("s"));
 
     const session = await ctx.reset({ name: "s", commitIdentity });
 
-    expect(session).toEqual({ name: "s", repo: "o/r", accountId: "acc-1", status: "running" });
+    expect(session).toEqual({
+      name: "s",
+      repo: "o/r",
+      accountId: "acc-1",
+      status: "running",
+      permissionMode: "auto",
+    });
     expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
     expect(ctx.engine.hasVolume(workspaceVolumeName("s"))).toBe(true);
     const spec = ctx.engine.runSessionSpecs.at(-1);

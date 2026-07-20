@@ -6,6 +6,7 @@
 
 import { findProviderType } from "~/core";
 import type { StatusBadge } from "~/ui/view-models/badges";
+import type { PermissionModeBadge } from "~/ui/view-models/permission-mode";
 
 export function ProviderBadge({ providerType }: { providerType: string }) {
   const type = findProviderType(providerType);
@@ -24,6 +25,12 @@ export function StatusPill({ badge, vtName }: { badge: StatusBadge; vtName?: str
       {badge.label}
     </span>
   );
+}
+
+/** The Session's Permission Mode. Renders nothing when the mode was never recorded. */
+export function PermissionModePill({ badge }: { badge: PermissionModeBadge | null }) {
+  if (!badge) return null;
+  return <span className={`badge perm perm-${badge.tone}`}>{badge.label}</span>;
 }
 
 export function Capability({ on, label }: { on: boolean; label: string }) {

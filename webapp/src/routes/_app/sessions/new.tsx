@@ -15,6 +15,7 @@ import type { AccountStatus } from "~/core";
 import { listAccounts } from "~/server/accounts";
 import { listRepos } from "~/server/github";
 import { createSession, listSessions } from "~/server/sessions";
+import { fetchSettings } from "~/server/settings";
 import { ProviderBadge, StatusPill } from "~/ui/components/badges";
 import { Combobox } from "~/ui/components/Combobox";
 import { useLiveSnapshot } from "~/ui/live/live-status";
@@ -25,29 +26,36 @@ import {
   repoValid,
   sessionNameState,
 } from "~/ui/view-models/forms";
+import { permissionModeOptions, prefilledPermissionMode } from "~/ui/view-models/permission-mode";
 import type { AccountRow } from "~/ui/view-models/rows";
 
 type LiveStatus = { id: string; status: AccountStatus };
 
 export const Route = createFileRoute("/_app/sessions/new")({
   loader: async () => {
-    const [accounts, sessions, repos] = await Promise.all([
+    const [accounts, sessions, repos, settings] = await Promise.all([
       listAccounts(),
       listSessions(),
       listRepos(),
+      fetchSettings(),
     ]);
-    return { accounts, sessions, repos };
+    return { accounts, sessions, repos, settings };
   },
   component: NewSessionPage,
 });
 
 function NewSessionPage() {
-  const { accounts, sessions, repos } = Route.useLoaderData();
+  const { accounts, sessions, repos, settings } = Route.useLoaderData();
   const router = useRouter();
 
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
   const [accountId, setAccountId] = useState("");
+  // Prefilled with the deployment default, so the common case is creating a
+  // Session without touching this at all.
+  const [permissionMode, setPermissionMode] = useState(() =>
+    prefilledPermissionMode(settings.defaultPermissionMode),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -69,7 +77,9 @@ function NewSessionPage() {
     setBusy(true);
     setError(null);
     try {
-      await createSession({ data: { name: nameState.slug, repo: repo.trim(), accountId } });
+      await createSession({
+        data: { name: nameState.slug, repo: repo.trim(), accountId, permissionMode },
+      });
       router.navigate({ to: "/sessions/$sessionName", params: { sessionName: nameState.slug } });
     } catch (e) {
       setError((e as Error).message);
@@ -156,6 +166,32 @@ function NewSessionPage() {
                 to create sessions.
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="field-label">Permission mode</span>
+          <div className="card-list">
+            {permissionModeOptions().map((o) => (
+              <label
+                key={o.value}
+                className={`card radio-card${permissionMode === o.value ? " selected" : ""}`}
+              >
+                <div className="card-row">
+                  <input
+                    type="radio"
+                    name="permission-mode"
+                    checked={permissionMode === o.value}
+                    onChange={() => setPermissionMode(o.value)}
+                  />
+                  <span className="card-title">{o.label}</span>
+                </div>
+                <div className="hint">{o.description}</div>
+                {o.notice && permissionMode === o.value && (
+                  <div className="hint subtle">{o.notice}</div>
+                )}
+              </label>
+            ))}
           </div>
         </div>
 

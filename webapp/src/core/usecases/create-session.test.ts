@@ -10,11 +10,13 @@ import {
   AccountNotFoundError,
   AccountNotReadyError,
   CloneFailedError,
+  InvalidPermissionModeError,
   InvalidRepoError,
   InvalidSessionNameError,
   RepositoryNotGrantedError,
   SessionExistsError,
 } from "../domain/errors";
+import { DEFAULT_PERMISSION_MODE } from "../domain/permission-mode";
 import { SESSION_LABELS, workspaceVolumeName } from "../domain/session";
 import { makeCreateSession } from "./create-session";
 
@@ -186,7 +188,13 @@ describe("create-session", () => {
 
   it("provisions the workspace volume and runs the main container two-phase", async () => {
     const session = await ctx.create(input);
-    expect(session).toEqual({ name: "s1", repo: "o/r", accountId: "acc-1", status: "running" });
+    expect(session).toEqual({
+      name: "s1",
+      repo: "o/r",
+      accountId: "acc-1",
+      status: "running",
+      permissionMode: "auto",
+    });
 
     expect(ctx.cloneIssuer.issuedRepos).toEqual(["o/r"]);
 
@@ -200,6 +208,32 @@ describe("create-session", () => {
     expect(spec.env.ANTHROPIC_AUTH_TOKEN).toBe("sk-ds");
     expect(spec.accountConfigVolume).toBe("cc-remote-account-acc-1");
     expect(spec.remoteControl).toBe(false);
+  });
+
+  it("puts the chosen permission mode in the container env and the label", async () => {
+    await ctx.create({ ...input, permissionMode: "bypassPermissions" });
+
+    const spec = ctx.engine.runSessionSpecs[0];
+    expect(spec.env.PERMISSION_MODE).toBe("bypassPermissions");
+    expect(spec.labels[SESSION_LABELS.permissionMode]).toBe("bypassPermissions");
+  });
+
+  it("applies the default permission mode when the caller names none", async () => {
+    await ctx.create(input);
+
+    const spec = ctx.engine.runSessionSpecs[0];
+    expect(spec.env.PERMISSION_MODE).toBe(DEFAULT_PERMISSION_MODE);
+    expect(spec.labels[SESSION_LABELS.permissionMode]).toBe(DEFAULT_PERMISSION_MODE);
+  });
+
+  // Rejected before the Session exists, so an operator never has to destroy a
+  // Session to diagnose an agent that could not start.
+  it("rejects an invalid permission mode without provisioning anything", async () => {
+    await expect(ctx.create({ ...input, permissionMode: "plan" })).rejects.toThrow(
+      InvalidPermissionModeError,
+    );
+    expect(ctx.engine.runSessionSpecs).toHaveLength(0);
+    expect(ctx.engine.volumes.size).toBe(0);
   });
 
   it("registers the broker secret and injects broker env vars", async () => {

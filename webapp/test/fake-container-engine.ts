@@ -4,9 +4,11 @@
 // the real port contract rather than asserting call shapes.
 
 import type { LoginContainer } from "../src/core/domain/login";
+import { isValidPermissionMode, type PermissionMode } from "../src/core/domain/permission-mode";
 import {
   type ContainerState,
   isAlreadyStopped,
+  SESSION_LABELS,
   type SessionContainer,
 } from "../src/core/domain/session";
 import type { WorkspaceGitProbe } from "../src/core/domain/workspace-state";
@@ -20,6 +22,10 @@ import type {
 } from "../src/core/ports/container-engine";
 
 type Container = SessionContainer;
+
+function readModeLabel(raw: string | undefined): PermissionMode | null {
+  return raw !== undefined && isValidPermissionMode(raw) ? raw : null;
+}
 
 export class FakeContainerEngine implements ContainerEngine {
   private readonly main = new Map<string, Container>();
@@ -96,8 +102,19 @@ export class FakeContainerEngine implements ContainerEngine {
   }
 
   /** Simulate a running main session container already existing. */
-  seedRunningSession(c: { name: string; repo: string; accountId: string }): void {
-    this.main.set(c.name, { ...c, state: "running", cloning: false });
+  seedRunningSession(c: {
+    name: string;
+    repo: string;
+    accountId: string;
+    /** Omitted models a Session created before the permission-mode label. */
+    permissionMode?: PermissionMode | null;
+  }): void {
+    this.main.set(c.name, {
+      ...c,
+      state: "running",
+      cloning: false,
+      permissionMode: c.permissionMode ?? null,
+    });
   }
 
   /**
@@ -112,8 +129,9 @@ export class FakeContainerEngine implements ContainerEngine {
     accountId: string;
     state: ContainerState;
     exitCode?: number | null;
+    permissionMode?: PermissionMode | null;
   }): void {
-    this.main.set(c.name, { ...c, cloning: false });
+    this.main.set(c.name, { ...c, cloning: false, permissionMode: c.permissionMode ?? null });
   }
 
   /** Simulate a session mid-clone: only the running clone helper exists yet. */
@@ -125,7 +143,7 @@ export class FakeContainerEngine implements ContainerEngine {
     exitCode?: number | null;
   }): void {
     const { state = "running", ...rest } = c;
-    this.clones.set(c.name, { ...rest, state, cloning: true });
+    this.clones.set(c.name, { ...rest, state, cloning: true, permissionMode: null });
   }
 
   /** Simulate credentials appearing in an Account Config Volume. */
@@ -166,6 +184,7 @@ export class FakeContainerEngine implements ContainerEngine {
       accountId: spec.accountId,
       state: "running",
       cloning: true,
+      permissionMode: readModeLabel(spec.labels[SESSION_LABELS.permissionMode]),
     });
   }
 
@@ -190,6 +209,10 @@ export class FakeContainerEngine implements ContainerEngine {
       accountId: spec.accountId,
       state: "running",
       cloning: false,
+      // Read back from the labels the use case actually wrote, like the Docker
+      // adapter's toSessionContainer — so a reset in a test sees what a reset
+      // in production would see.
+      permissionMode: readModeLabel(spec.labels[SESSION_LABELS.permissionMode]),
     });
   }
 

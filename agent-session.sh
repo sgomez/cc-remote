@@ -47,5 +47,9 @@ fi
 
 echo ""
 echo "Claude Code has exited. You are now in a fallback bash shell."
-echo "Run 'claude --remote-control=$SESSION_NAME' to reconnect Remote Control."
+# The --permission-mode flag is NOT optional in this hint. Nothing writes the
+# mode into ~/.claude.json any more (it lives on the shared Account Config
+# Volume, where a sibling Session would overwrite it), so a relaunch without the
+# flag would run under Claude's own default rather than this Session's mode.
+echo "Run 'claude --remote-control=$SESSION_NAME --permission-mode=${PERMISSION_MODE:-auto}' to reconnect Remote Control."
 exec bash

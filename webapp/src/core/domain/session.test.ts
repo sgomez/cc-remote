@@ -56,15 +56,34 @@ describe("session naming and labels", () => {
   });
 
   it("builds the canonical session labels including the account id", () => {
-    const labels = buildSessionLabels({ name: "demo", repo: "o/r", accountId: "acc1" });
+    const labels = buildSessionLabels({
+      name: "demo",
+      repo: "o/r",
+      accountId: "acc1",
+      permissionMode: "auto",
+    });
     expect(labels).toEqual({
       [SESSION_LABELS.marker]: "true",
       [SESSION_LABELS.name]: "demo",
       [SESSION_LABELS.repo]: "o/r",
       [SESSION_LABELS.accountId]: "acc1",
+      [SESSION_LABELS.permissionMode]: "auto",
     });
     // The account id label replaces the legacy provider-id label.
     expect(SESSION_LABELS.accountId).toBe("cc-remote-account-id");
+  });
+
+  // The label is what lets a reset put the Session back in the mode it was
+  // created in, rather than readopting whatever the deployment default is now.
+  it("carries the permission mode so a reset can recover it", () => {
+    const labels = buildSessionLabels({
+      name: "demo",
+      repo: "o/r",
+      accountId: "acc1",
+      permissionMode: "bypassPermissions",
+    });
+    expect(labels[SESSION_LABELS.permissionMode]).toBe("bypassPermissions");
+    expect(SESSION_LABELS.permissionMode).toBe("cc-remote-permission-mode");
   });
 });
 
@@ -76,10 +95,12 @@ describe("toSessionStatus", () => {
     state,
     exitCode,
     cloning: false,
+    permissionMode: null,
   });
   const clone = (state: ContainerState, exitCode?: number | null): SessionContainer => ({
     ...agent(state, exitCode),
     cloning: true,
+    permissionMode: null,
   });
 
   describe("main agent container", () => {

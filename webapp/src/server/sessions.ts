@@ -14,6 +14,7 @@ import { loadDeploymentConfig } from "~/config/deployment";
 import {
   makeCreateSession,
   makeDestroySession,
+  makeGetSettings,
   makeListSessions,
   makeReadWorkspaceState,
   makeResetSession,
@@ -28,8 +29,17 @@ import {
   brokerSecretRegistry,
   brokerUrl,
   containerEngine,
-  permissionMode,
+  settingRepository,
 } from "./runtime";
+
+/**
+ * The deployment default. Local rather than imported from `./settings` on
+ * purpose: that module may only export server functions (see its header).
+ */
+async function deploymentDefaultPermissionMode(): Promise<string> {
+  const settings = await makeGetSettings({ settings: await settingRepository() })();
+  return settings.defaultPermissionMode;
+}
 
 async function guard(): Promise<void> {
   await requireSession(getRequest().headers);
@@ -61,7 +71,9 @@ export const listSessions = createServerFn({ method: "GET" }).handler(
 );
 
 export const createSession = createServerFn({ method: "POST" })
-  .validator((data: { name: string; repo: string; accountId: string }) => data)
+  .validator(
+    (data: { name: string; repo: string; accountId: string; permissionMode?: string }) => data,
+  )
   .handler(async ({ data }): Promise<{ name: string }> => {
     await guard();
     const create = makeCreateSession({
@@ -76,7 +88,10 @@ export const createSession = createServerFn({ method: "POST" })
       name: data.name,
       repo: data.repo,
       accountId: data.accountId,
-      permissionMode: permissionMode(),
+      // The operator's choice, falling back to the stored Deployment Setting.
+      // The core validates it and rejects anything outside the valid set before
+      // a Session exists.
+      permissionMode: data.permissionMode ?? (await deploymentDefaultPermissionMode()),
       commitIdentity: await getCommitIdentity(getRequest().headers),
     });
     return { name: session.name };
@@ -122,7 +137,10 @@ export const resetSession = createServerFn({ method: "POST" })
     });
     await reset({
       name: data.name,
-      permissionMode: permissionMode(),
+      // Only a fallback: reset prefers the mode recorded on the Session's own
+      // container label, so resetting never changes its security posture. This
+      // applies to Sessions created before that label existed.
+      permissionMode: await deploymentDefaultPermissionMode(),
       // The identity of whoever performs the reset, not the original creator:
       // container env is fixed at create time, so a reset is the only point at
       // which a Session's Commit Identity can change.

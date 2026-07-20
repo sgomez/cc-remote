@@ -6,4 +6,5 @@ export type { ProviderAccountRow, SettingRow } from "./entities";
 export { ProviderAccount, Setting } from "./entities";
 export { DEFAULT_DB_PATH } from "./mikro-orm.config";
 export { MikroOrmAccountRepository } from "./mikro-orm-account-repository";
+export { MikroOrmSettingRepository } from "./mikro-orm-setting-repository";
 export { initOrm } from "./orm";

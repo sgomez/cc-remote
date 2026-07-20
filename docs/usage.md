@@ -68,11 +68,16 @@ Memory accepts human units (`512m`, `2g`, `1.5g`) or raw bytes. Invalid values a
 
 ### Permission mode
 
-Sessions run `--permission-mode auto` by default. To change it for every Session (e.g. `default`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`):
+Each Session picks its permission mode when you create it, and keeps it for the container's life — including across a **reset**. Two modes are offered:
 
-```json
-"permissions": { "mode": "auto" }
-```
+| Mode | What it means |
+| --- | --- |
+| **Filtered** (`auto`) | The agent works on its own, with Claude's background safety classifier vetting what it does. |
+| **Unfiltered** (`bypassPermissions`) | The agent runs every command and edit without asking and without the safety classifier. |
+
+The selector on the create-session form starts from a **deployment default** you set on the **Settings** page, in the browser — no SSH, no redeploy. Changing it affects only Sessions you create or reset from then on; Sessions that already exist keep the mode they were created in.
+
+This is **not** configured in `config.json` or `.env`. The Settings page is the only source; a `PERMISSION_MODE` value in the environment has no effect and is no longer written by the wizard.
 
 ### Auto Mode rules
 
@@ -80,7 +85,6 @@ You can tune the Auto Mode classifier (e.g. declare trusted repos or domains to 
 
 ```json
 {
-  "permissions": { "defaultMode": "auto" },
   "autoMode": {
     "environment": [
       "$defaults",

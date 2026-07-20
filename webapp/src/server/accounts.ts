@@ -16,7 +16,7 @@ import {
   toSessionStatus,
 } from "~/core";
 import type { AccountDetail, AccountRow, SessionRow } from "~/ui/view-models/rows";
-import { accountRepository, containerEngine, permissionMode } from "./runtime";
+import { accountRepository, containerEngine } from "./runtime";
 
 async function guard(): Promise<void> {
   await requireSession(getRequest().headers);
@@ -72,6 +72,7 @@ export const getAccount = createServerFn({ method: "GET" })
         // One derivation for every surface — a Session must not read "stopped"
         // here while the sessions list calls the same container "error".
         status: toSessionStatus(c),
+        permissionMode: c.permissionMode,
       });
     }
 
@@ -98,7 +99,6 @@ export const registerAccount = createServerFn({ method: "POST" })
       engine: containerEngine(),
       clock: systemClock,
       ids: uuidGenerator,
-      permissionMode: permissionMode(),
     });
     const account = await register({
       providerType: data.providerType,

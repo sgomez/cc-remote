@@ -25,13 +25,9 @@ export type RegisterAccountDeps = {
   engine: ContainerEngine;
   clock: Clock;
   ids: IdGenerator;
-  /** Permission mode baked into the seeded wizard-skip config. */
-  permissionMode?: string;
 };
 
 export function makeRegisterAccount(deps: RegisterAccountDeps) {
-  const permissionMode = deps.permissionMode ?? "auto";
-
   return async function registerAccount(input: RegisterAccountInput): Promise<Account> {
     const type = requireProviderType(input.providerType);
 
@@ -70,7 +66,7 @@ export function makeRegisterAccount(deps: RegisterAccountDeps) {
     await deps.engine.seedVolume(
       volume,
       ACCOUNT_CONFIG_FILE,
-      JSON.stringify(wizardSkipConfig(permissionMode), null, 2),
+      JSON.stringify(wizardSkipConfig(), null, 2),
     );
 
     if (type.seeding === "oauth") {

@@ -18,13 +18,19 @@ function account(overrides: Partial<Account>): Account {
 
 describe("wizard-skip config", () => {
   it("carries the three onboarding-gating keys verified on Claude Code v2.1.207", () => {
-    const cfg = wizardSkipConfig("auto");
+    const cfg = wizardSkipConfig();
     expect(cfg).toEqual({
       hasCompletedOnboarding: true,
       theme: "dark",
-      permissions: { defaultMode: "auto" },
       projects: { "/workspace": { hasTrustDialogAccepted: true } },
     });
+  });
+
+  // The Account Config Volume is shared by every Session of the Account, so a
+  // permission mode written here would be a shared mutable cell decided by
+  // whichever sibling container started last.
+  it("never carries a permission mode, which belongs to a Session not an Account", () => {
+    expect(wizardSkipConfig()).not.toHaveProperty("permissions");
   });
 
   it("seeds into ~/.claude.json", () => {

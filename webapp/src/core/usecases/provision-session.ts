@@ -7,6 +7,7 @@ import type { Account } from "../domain/account";
 import { accountConfigVolumeName } from "../domain/account";
 import type { CommitIdentity } from "../domain/commit-identity";
 import { CloneFailedError } from "../domain/errors";
+import type { PermissionMode } from "../domain/permission-mode";
 import type { ProviderType } from "../domain/provider-type";
 import type { Session } from "../domain/session";
 import { buildCloneLabels, buildSessionLabels, workspaceVolumeName } from "../domain/session";
@@ -22,7 +23,7 @@ export type ProvisionSessionParams = {
   name: string;
   repo: string;
   sessionUuid: string;
-  permissionMode: string;
+  permissionMode: PermissionMode;
   brokerUrl: string;
   commitIdentity: CommitIdentity;
 };
@@ -36,7 +37,7 @@ export async function provisionSession(
 ): Promise<Session> {
   const { account, type, name, repo } = params;
   const workspaceVolume = workspaceVolumeName(name);
-  const labelInput = { name, repo, accountId: account.id };
+  const labelInput = { name, repo, accountId: account.id, permissionMode: params.permissionMode };
 
   const { token: cloneToken } = await cloneIssuer.issueToken(repo);
 
@@ -81,5 +82,11 @@ export async function provisionSession(
     remoteControl: type.remoteControl,
   });
 
-  return { name, repo, accountId: account.id, status: "running" };
+  return {
+    name,
+    repo,
+    accountId: account.id,
+    status: "running",
+    permissionMode: params.permissionMode,
+  };
 }
