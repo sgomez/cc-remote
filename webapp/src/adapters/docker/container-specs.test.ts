@@ -36,7 +36,11 @@ const sessionSpec: SessionContainerSpec = {
     GIT_USER_NAME: "Sergio Gómez",
     GIT_USER_EMAIL: "580701+sgomez@users.noreply.github.com",
   },
-  labels: { "cc-remote-session": "true", "cc-remote-session-name": "demo" },
+  labels: {
+    "cc-remote-session": "true",
+    "cc-remote-session-name": "demo",
+    "cc-remote-permission-mode": "bypassPermissions",
+  },
   accountConfigVolume: "cc-remote-account-acc-1",
   remoteControl: false,
 };
@@ -140,6 +144,9 @@ describe("buildSessionCreateOptions — config-volume account", () => {
 
   it("passes the domain labels through", () => {
     expect(opts.Labels).toMatchObject(sessionSpec.labels);
+    // The permission-mode label is what a reset reads back to restore the mode
+    // the Session was created in — losing it here would silently downgrade it.
+    expect(opts.Labels?.["cc-remote-permission-mode"]).toBe("bypassPermissions");
   });
 
   it("applies a memory limit only when configured", () => {

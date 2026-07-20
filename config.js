@@ -207,7 +207,6 @@ async function main() {
   // repo and its Account, and gets its own workspace volume), so the wizard has no
   // repo, session or host-path questions left to ask.
   const webPort = config.web?.port || '4000';
-  const permissionMode = config.permissions?.mode || 'auto';
 
   // Host UID/GID dynamic adapters
   const hostUid = process.env.HOST_UID || '1000';
@@ -221,9 +220,6 @@ async function main() {
   // browser bootstrap screen in Phase 2 and stored in the Bootstrap File on the
   // persisted data volume, not in config.json or .env.
   const finalConfig = {
-    permissions: {
-      mode: permissionMode
-    },
     web: {
       domain: domain,
       port: webPort,
@@ -279,7 +275,6 @@ async function main() {
   // containers mount named volumes exclusively.
   const envContent = [
     `# Auto-generated configuration by config.js`,
-    `PERMISSION_MODE="${permissionMode}"`,
     `DOMAIN_NAME="${domain}"`,
     `BETTER_AUTH_URL="${betterAuthUrl}"`,
     `WEB_PORT="${webPort}"`,

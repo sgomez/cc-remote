@@ -8,9 +8,9 @@
 // on first use, so unit tests (which never import this) need no Docker daemon
 // or DB.
 
-import { initOrm, MikroOrmAccountRepository } from "~/adapters/db";
+import { initOrm, MikroOrmAccountRepository, MikroOrmSettingRepository } from "~/adapters/db";
 import { createDockerContainerEngine, type DockerContainerEngine } from "~/adapters/docker";
-import type { AccountRepository, BrokerSecretRegistry } from "~/core";
+import type { AccountRepository, BrokerSecretRegistry, SettingRepository } from "~/core";
 
 let engine: DockerContainerEngine | undefined;
 
@@ -18,15 +18,6 @@ let engine: DockerContainerEngine | undefined;
 export function containerEngine(): DockerContainerEngine {
   engine ??= createDockerContainerEngine();
   return engine;
-}
-
-/**
- * Permission mode baked into seeded configs and passed to new agent containers
- * (`claude --permission-mode`). Defaults to `auto` — the unattended default the
- * legacy web-manager and agent image use (CLAUDE.md "Auto Mode").
- */
-export function permissionMode(): string {
-  return process.env.PERMISSION_MODE ?? "auto";
 }
 
 /**
@@ -47,6 +38,20 @@ let accountsPromise: Promise<AccountRepository> | undefined;
 export function accountRepository(): Promise<AccountRepository> {
   accountsPromise ??= initOrm().then((orm) => new MikroOrmAccountRepository(orm));
   return accountsPromise;
+}
+
+let settingsPromise: Promise<SettingRepository> | undefined;
+
+/**
+ * The shared SQLite-backed `SettingRepository` — the ONLY source of a Deployment
+ * Setting. Nothing in the environment supplies or overrides one, so there is no
+ * precedence question: `PERMISSION_MODE` is deliberately absent from
+ * web-manager's environment, and reading it here would resurrect a second
+ * apparent source that silently did nothing.
+ */
+export function settingRepository(): Promise<SettingRepository> {
+  settingsPromise ??= initOrm().then((orm) => new MikroOrmSettingRepository(orm));
+  return settingsPromise;
 }
 
 let secretRegistry: BrokerSecretRegistry | undefined;

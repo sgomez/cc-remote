@@ -161,6 +161,14 @@ function AppLayout() {
           >
             <span>repositories</span>
           </Link>
+          <Link
+            to="/settings"
+            className="nav-link"
+            activeProps={{ className: "nav-link active" }}
+            onClick={closeMenu}
+          >
+            <span>settings</span>
+          </Link>
           <div className="sidebar-user">
             <span className="card-meta">{user?.name ?? user?.email ?? "signed in"}</span>
             <button type="button" className="btn small" onClick={doSignOut}>

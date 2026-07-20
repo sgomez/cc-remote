@@ -44,6 +44,7 @@ describe("toSessionContainer", () => {
         [SESSION_LABELS.name]: "demo",
         [SESSION_LABELS.repo]: "octocat/hello",
         [SESSION_LABELS.accountId]: "acc-1",
+        [SESSION_LABELS.permissionMode]: "bypassPermissions",
       },
       state: "running",
     });
@@ -54,7 +55,38 @@ describe("toSessionContainer", () => {
       state: "running",
       exitCode: null,
       cloning: false,
+      permissionMode: "bypassPermissions",
     });
+  });
+
+  // A Session created before the label existed. Reporting `null` rather than a
+  // guessed default is what lets reset-session apply the deployment default,
+  // which is the only layer that knows what it is.
+  it("reports a null permission mode when the label is absent", () => {
+    const sc = toSessionContainer({
+      labels: {
+        [SESSION_LABELS.marker]: "true",
+        [SESSION_LABELS.name]: "legacy",
+        [SESSION_LABELS.repo]: "octocat/hello",
+        [SESSION_LABELS.accountId]: "acc-1",
+      },
+      state: "running",
+    });
+    expect(sc.permissionMode).toBeNull();
+  });
+
+  it("reports a null permission mode when the label holds a mode we do not offer", () => {
+    const sc = toSessionContainer({
+      labels: {
+        [SESSION_LABELS.marker]: "true",
+        [SESSION_LABELS.name]: "odd",
+        [SESSION_LABELS.repo]: "octocat/hello",
+        [SESSION_LABELS.accountId]: "acc-1",
+        [SESSION_LABELS.permissionMode]: "plan",
+      },
+      state: "running",
+    });
+    expect(sc.permissionMode).toBeNull();
   });
 
   it("marks cloning helpers via the cloning label", () => {

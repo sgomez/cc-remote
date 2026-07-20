@@ -5,8 +5,10 @@
 
 import {
   type ContainerState,
+  isValidPermissionMode,
   LOGIN_LABELS,
   type LoginContainer,
+  type PermissionMode,
   SESSION_LABELS,
   type SessionContainer,
 } from "../../core";
@@ -94,7 +96,15 @@ export function toSessionContainer(view: {
     state: toContainerState(state),
     exitCode: exitCode ?? null,
     cloning: labels[SESSION_LABELS.cloning] === "true",
+    // Absent on Sessions created before the label existed, and deliberately not
+    // defaulted here: only the caller knows the deployment default, and guessing
+    // would silently hand a legacy Session a mode it was never created in.
+    permissionMode: readPermissionModeLabel(labels[SESSION_LABELS.permissionMode]),
   };
+}
+
+function readPermissionModeLabel(raw: string | undefined): PermissionMode | null {
+  return raw !== undefined && isValidPermissionMode(raw) ? raw : null;
 }
 
 /**

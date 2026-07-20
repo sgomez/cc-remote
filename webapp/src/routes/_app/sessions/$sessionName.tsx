@@ -18,7 +18,7 @@ import {
   startSession,
   stopSession,
 } from "~/server/sessions";
-import { StatusPill } from "~/ui/components/badges";
+import { PermissionModePill, StatusPill } from "~/ui/components/badges";
 import { type ConfirmOptions, useFeedback } from "~/ui/components/feedback";
 import { LogsModal } from "~/ui/components/LogsModal";
 import { Spinner } from "~/ui/components/Spinner";
@@ -31,6 +31,7 @@ import {
   type SessionActionKind,
   sessionActionState,
 } from "~/ui/view-models/capabilities";
+import { permissionModeBadge } from "~/ui/view-models/permission-mode";
 import type { AccountRow, SessionRow } from "~/ui/view-models/rows";
 import { workspaceSummary } from "~/ui/view-models/workspace";
 
@@ -102,6 +103,7 @@ function SessionDetailPage() {
   const account = accounts.find((a: AccountRow) => a.id === session.accountId);
   const type = account ? requireProviderType(account.providerType) : undefined;
   const badge = sessionStatusBadge(session.status);
+  const permBadge = permissionModeBadge(session.permissionMode);
   const rc = type ? remoteControlPanel(type) : undefined;
   const buttons = sessionActionState(session.status, busy);
 
@@ -119,6 +121,12 @@ function SessionDetailPage() {
         <>
           This destroys the container and its workspace volume, then re-clones with a fresh session
           UUID.
+          {permBadge && (
+            <p className="subtle">
+              It will come back in <strong>{permBadge.label}</strong> permission mode, the one it
+              was created in.
+            </p>
+          )}
           <WorkspaceLossNotice sessionName={session.name} />
         </>
       ),
@@ -196,7 +204,10 @@ function SessionDetailPage() {
             )}
           </p>
         </div>
-        <StatusPill badge={badge} vtName={`sess-status-${session.name}`} />
+        <div className="head-badges">
+          <PermissionModePill badge={permBadge} />
+          <StatusPill badge={badge} vtName={`sess-status-${session.name}`} />
+        </div>
       </div>
 
       {session.status === "clone_failed" && (

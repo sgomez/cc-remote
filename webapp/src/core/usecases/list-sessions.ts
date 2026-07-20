@@ -24,6 +24,7 @@ export function makeListSessions(deps: ListSessionsDeps) {
         repo: container.repo,
         accountId: container.accountId,
         status: toSessionStatus(container),
+        permissionMode: container.permissionMode,
       });
     }
 

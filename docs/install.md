@@ -50,7 +50,7 @@ The Phase 1 wizard asks about **infrastructure only**:
 | **Domain name** | e.g. `cc.example.com`, or `localhost:4000` for a local test. |
 | Caddy **HTTP/HTTPS ports** | The defaults (80/443) are fine; enter `0` for HTTP to disable it. |
 
-Everything else (auth secret, container user IDs, git identity, permission mode, per-agent resource limits) is derived automatically, with no prompt. You can change those later in `config.json` (see the [user guide](usage.md#configuration)); never edit `.env` by hand, it's regenerated on every `./setup.sh` run.
+Everything else (auth secret, container user IDs, git identity, per-agent resource limits) is derived automatically, with no prompt. You can change those later in `config.json` (see the [user guide](usage.md#configuration)); never edit `.env` by hand, it's regenerated on every `./setup.sh` run.
 
 The wizard asks **nothing** about GitHub Apps, OAuth credentials, private keys, allow-lists, repositories, sessions or Claude accounts. Those are configured in Phase 2, from the browser.
 

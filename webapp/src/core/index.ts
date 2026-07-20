@@ -21,6 +21,14 @@ export { buildCommitIdentity, githubNoreplyEmail } from "./domain/commit-identit
 export * from "./domain/errors";
 export type { LoginContainer } from "./domain/login";
 export { buildLoginLabels, LOGIN_LABELS } from "./domain/login";
+export type { PermissionMode } from "./domain/permission-mode";
+export {
+  assertValidPermissionMode,
+  DEFAULT_PERMISSION_MODE,
+  isValidPermissionMode,
+  PERMISSION_MODES,
+  resolvePermissionMode,
+} from "./domain/permission-mode";
 export type { FieldSpec, ProviderType, SeedingMethod } from "./domain/provider-type";
 export {
   findProviderType,
@@ -68,6 +76,7 @@ export type {
   GitHubTokenIssuer,
 } from "./ports/github-token-issuer";
 export type { IdGenerator } from "./ports/id-generator";
+export type { SettingRepository } from "./ports/setting-repository";
 
 // Use cases
 export {
@@ -103,6 +112,13 @@ export {
 export { makeRecoverLogins } from "./usecases/recover-logins";
 export { makeRegisterAccount, type RegisterAccountInput } from "./usecases/register-account";
 export { makeResetSession, type ResetSessionInput } from "./usecases/reset-session";
+export {
+  DEFAULT_PERMISSION_MODE_KEY,
+  type DeploymentSettings,
+  makeGetSettings,
+  makeUpdateSettings,
+  type UpdateSettingsInput,
+} from "./usecases/settings";
 export { makeStartLogin, type StartLoginInput } from "./usecases/start-login";
 export { makeStartSession, type StartSessionInput } from "./usecases/start-session";
 export { makeStopSession, type StopSessionInput } from "./usecases/stop-session";

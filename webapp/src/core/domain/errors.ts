@@ -126,3 +126,17 @@ export class CloneFailedError extends DomainError {
     this.exitCode = exitCode;
   }
 }
+
+/**
+ * A Permission Mode outside the deployment's valid set reached the domain.
+ * Thrown before a Session is created, so an operator never has to destroy a
+ * Session to find out its agent could not start.
+ */
+export class InvalidPermissionModeError extends DomainError {
+  constructor(mode: string) {
+    super(
+      "invalid_permission_mode",
+      `Invalid permission mode: ${JSON.stringify(mode)}. Valid modes: auto, bypassPermissions.`,
+    );
+  }
+}

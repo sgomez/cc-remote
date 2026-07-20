@@ -11,7 +11,6 @@ export const ACCOUNT_CONFIG_FILE = ".claude.json";
 export type WizardSkipConfig = {
   hasCompletedOnboarding: true;
   theme: string;
-  permissions: { defaultMode: string };
   projects: Record<string, { hasTrustDialogAccepted: true }>;
 };
 
@@ -21,12 +20,18 @@ export type WizardSkipConfig = {
  * separately, so onboarding being complete does NOT suppress it) and the
  * folder-trust dialog (projects["/workspace"].hasTrustDialogAccepted). All
  * three keys are required.
+ *
+ * `permissions.defaultMode` is deliberately NOT written here. This file lands in
+ * the Account Config Volume, which every Session of the Account shares, so the
+ * key would be a shared mutable cell: the last container to start would decide
+ * the mode for its siblings. An Account has no Permission Mode — a Session does,
+ * and it reaches the agent through that Session's own `PERMISSION_MODE` env var
+ * and the explicit `--permission-mode` flag. See CLAUDE.md.
  */
-export function wizardSkipConfig(permissionMode: string): WizardSkipConfig {
+export function wizardSkipConfig(): WizardSkipConfig {
   return {
     hasCompletedOnboarding: true,
     theme: "dark",
-    permissions: { defaultMode: permissionMode },
     projects: { "/workspace": { hasTrustDialogAccepted: true } },
   };
 }

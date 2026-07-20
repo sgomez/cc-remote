@@ -216,7 +216,15 @@ else
     echo " [Info] Git repository already exists. Skipping clone."
 fi
 
-# Automatically mark /workspace as a trusted directory and set default permission mode in Claude settings
+# Automatically mark /workspace as a trusted directory in Claude settings.
+#
+# `permissions.defaultMode` is deliberately NOT written here. This file lives on
+# the Account Config Volume, which every Session of the Account shares, so the
+# key is a shared mutable cell: the last container to start would decide the mode
+# for its siblings, and a Session created as filtered could end up unfiltered.
+# The mode reaches the agent from this container's own PERMISSION_MODE env var,
+# passed explicitly as --permission-mode by agent-session.sh (and by the fallback
+# hint printed when Claude exits). See CLAUDE.md.
 node -e '
 const fs = require("fs");
 const path = "/home/node/.claude.json";
@@ -228,7 +236,7 @@ try {
     } catch (parseErr) {
       // A corrupt ~/.claude.json must NOT block the required keys below from
       // being written: without hasCompletedOnboarding / hasTrustDialogAccepted /
-      // remoteControlAtStartup / permissions.defaultMode, Claude sits on a
+      // remoteControlAtStartup, Claude sits on a
       // first-run modal in a headless container and Remote Control never comes
       // up. Recover by starting fresh (same philosophy as config.js on a corrupt
       // config.json). The prior file is overwritten by the writeFileSync below.
@@ -239,9 +247,6 @@ try {
   if (!config.projects) config.projects = {};
   if (!config.projects["/workspace"]) config.projects["/workspace"] = {};
   config.projects["/workspace"].hasTrustDialogAccepted = true;
-
-  if (!config.permissions) config.permissions = {};
-  config.permissions.defaultMode = process.env.PERMISSION_MODE || "auto";
 
   // Belt to the --remote-control flag in agent-session.sh: any `claude` started
   // by hand inside the container (fallback shell, manual restart) also brings the
@@ -257,7 +262,7 @@ try {
   if (!config.theme) config.theme = "dark";
 
   fs.writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
-  console.log(" [Info] Automatically configured default permission mode and trusted /workspace in Claude settings.");
+  console.log(" [Info] Automatically trusted /workspace in Claude settings.");
 } catch (e) {
   console.error(" [Error] Could not configure Claude settings:", e.message);
 }

@@ -3,13 +3,15 @@
 // components import them freely. The catalogue label/capabilities are looked up
 // client-side from the (client-safe) Provider Type catalogue by `providerType`.
 
-import type { AccountStatus, SessionStatus } from "~/core";
+import type { AccountStatus, PermissionMode, SessionStatus } from "~/core";
 
 export type SessionRow = {
   name: string;
   repo: string;
   accountId: string;
   status: SessionStatus;
+  /** `null` for a Session created before the mode was recorded on its label. */
+  permissionMode: PermissionMode | null;
 };
 
 export type AccountRow = {
