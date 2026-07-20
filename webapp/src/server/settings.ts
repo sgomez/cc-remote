@@ -2,6 +2,12 @@
 // use cases. No logic here — the "absent row means the domain default" rule and
 // the Permission Mode validation both live in the core, so they are covered by
 // core tests rather than by exercising a page.
+//
+// Every export here MUST be a `createServerFn`. Route modules import from this
+// file, and the TanStack Start plugin only strips server-fn handlers (and with
+// them the server-only imports below) from the client bundle. A plain exported
+// helper survives that pass and drags `./runtime` -> dockerode -> ssh2 ->
+// cpu-features into the browser build, which fails to resolve a native binding.
 
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
@@ -26,13 +32,3 @@ export const updateSettings = createServerFn({ method: "POST" })
     await guard();
     return makeUpdateSettings({ settings: await settingRepository() })(data);
   });
-
-/**
- * The deployment default, for the session server functions. Create uses it when
- * the operator's form did not name a mode; reset uses it only for a Session
- * created before the permission-mode label existed.
- */
-export async function deploymentDefaultPermissionMode(): Promise<string> {
-  const settings = await makeGetSettings({ settings: await settingRepository() })();
-  return settings.defaultPermissionMode;
-}

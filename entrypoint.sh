@@ -37,6 +37,24 @@ if [ "$(id -u)" = "0" ]; then
         chown node:node "$ACCOUNT_CONFIG_DIR" 2>/dev/null
     fi
 
+    # A Session created in bypassPermissions hits a blocking acceptance dialog on
+    # startup ("WARNING: Claude Code running in Bypass Permissions mode"), which
+    # nobody can answer in a headless container: Claude would sit on it forever
+    # and never reach Remote Control. Pre-accept it.
+    #
+    # This goes in the POLICY settings layer, at a container-local path, and NOT
+    # in ~/.claude/settings.json — that file lives on the Account Config Volume,
+    # which every Session of the Account shares. Written here it is per-Session,
+    # exactly like the mode it accompanies, and a filtered Session never gets it.
+    # (Claude Code reads the flag from any settings layer; the legacy
+    # `bypassPermissionsModeAccepted` key in ~/.claude.json no longer works.)
+    if [ "$PERMISSION_MODE" = "bypassPermissions" ]; then
+        mkdir -p /etc/claude-code
+        printf '{\n  "skipDangerousModePermissionPrompt": true\n}\n' \
+            > /etc/claude-code/managed-settings.json
+        echo " [Info] Pre-accepted the bypass-permissions disclaimer for this Session."
+    fi
+
     # Re-execute this script as the node user with corrected HOME environment variable
     echo " [Info] Dropping privileges to node user..."
     export HOME=/home/node

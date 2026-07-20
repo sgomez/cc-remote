@@ -14,6 +14,7 @@ import { loadDeploymentConfig } from "~/config/deployment";
 import {
   makeCreateSession,
   makeDestroySession,
+  makeGetSettings,
   makeListSessions,
   makeReadWorkspaceState,
   makeResetSession,
@@ -23,8 +24,22 @@ import {
 } from "~/core";
 import type { GitHubTokenIssuer } from "~/core/ports/github-token-issuer";
 import type { SessionRow } from "~/ui/view-models/rows";
-import { accountRepository, brokerSecretRegistry, brokerUrl, containerEngine } from "./runtime";
-import { deploymentDefaultPermissionMode } from "./settings";
+import {
+  accountRepository,
+  brokerSecretRegistry,
+  brokerUrl,
+  containerEngine,
+  settingRepository,
+} from "./runtime";
+
+/**
+ * The deployment default. Local rather than imported from `./settings` on
+ * purpose: that module may only export server functions (see its header).
+ */
+async function deploymentDefaultPermissionMode(): Promise<string> {
+  const settings = await makeGetSettings({ settings: await settingRepository() })();
+  return settings.defaultPermissionMode;
+}
 
 async function guard(): Promise<void> {
   await requireSession(getRequest().headers);
